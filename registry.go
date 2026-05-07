@@ -6,36 +6,60 @@ import (
 	"sync"
 )
 
-var globalRegistry = &Registry{
-	resourceList: make(map[reflect.Type]any),
-}
+var globalRegistry = newRegistry()
 
 func keyOf[T any]() reflect.Type {
-	return reflect.TypeOf((*T)(nil)).Elem()
+	return reflect.TypeFor[T]()
 }
 
 func Add[T any](t T) error {
+	return add(globalRegistry, t)
+}
+
+func add[T any](r *registry, t T) error {
 	key := keyOf[T]()
 
-	globalRegistry.mu.Lock()
-	defer globalRegistry.mu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	if _, ok := globalRegistry.find(key); ok {
+	if _, ok := r.unsafeFind(key); ok {
 		return fmt.Errorf("resource of type %v is already registered", key)
 	}
 
-	globalRegistry.resourceList[key] = t
+	r.resourceList[key] = t
+	return nil
+}
+
+func addAny(r *registry, res any) error {
+	if res == nil {
+		return fmt.Errorf("cannot add nil resource")
+	}
+
+	key := reflect.TypeOf(res)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.unsafeFind(key); ok {
+		return fmt.Errorf("resource of type %v is already registered", key)
+	}
+
+	r.resourceList[key] = res
 	return nil
 }
 
 func Get[T any]() (T, bool) {
+	return get[T](globalRegistry)
+}
+
+func get[T any](r *registry) (T, bool) {
 	var zero T
 	key := keyOf[T]()
 
-	globalRegistry.mu.RLock()
-	defer globalRegistry.mu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-	val, ok := globalRegistry.find(key)
+	val, ok := r.unsafeFind(key)
 	if !ok {
 		return zero, false
 	}
@@ -43,12 +67,33 @@ func Get[T any]() (T, bool) {
 	return val.(T), true
 }
 
-type Registry struct {
+func Walk(fn func(t reflect.Type, res any) bool) {
+	globalRegistry.walk(fn)
+}
+
+type registry struct {
 	mu           sync.RWMutex
 	resourceList map[reflect.Type]any
 }
 
-func (r *Registry) find(t reflect.Type) (any, bool) {
+func newRegistry() *registry {
+	return &registry{
+		resourceList: make(map[reflect.Type]any),
+	}
+}
+
+func (r *registry) walk(fn func(t reflect.Type, res any) bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for t, res := range r.resourceList {
+		if !fn(t, res) {
+			break
+		}
+	}
+}
+
+func (r *registry) unsafeFind(t reflect.Type) (any, bool) {
 	val, ok := r.resourceList[t]
 	return val, ok
 }

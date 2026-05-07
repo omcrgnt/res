@@ -41,7 +41,7 @@ func (t *factory) WithSource(source any) *factory {
 	return t
 }
 
-func (t *factory) Build() (*Registry, error) {
+func (t *factory) Build() (*registry, error) {
 	return t.build()
 }
 
@@ -56,7 +56,7 @@ func (t *factory) register(b Builder) {
 	t.systemBuilderList[label] = b
 }
 
-func (t *factory) build() (*Registry, error) {
+func (t *factory) build() (*registry, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -66,13 +66,14 @@ func (t *factory) build() (*Registry, error) {
 
 	var (
 		builderList     []Builder
+		registry        = newRegistry()
 		userBuilderList = extractor.New[Builder](t.userSource).Extract()
 	)
 
 	for _, builder := range userBuilderList {
-		switch t.checkLabelExistsInSystemBuilderList(builder) {
+		switch t.unsafeCheckLabelExistsInSystemBuilderList(builder) {
 		case true:
-			if t.compareBuilderWithExistingSystemBuilder(builder) {
+			if t.unsafeCompareBuilderWithExistingSystemBuilder(builder) {
 				t.systemBuilderList[builder.Label()] = builder
 			}
 		default:
@@ -93,19 +94,17 @@ func (t *factory) build() (*Registry, error) {
 		if err != nil {
 			return nil, err
 		}
-		resourceList = append(resourceList, resource)
+		addAny(registry, resource)
 	}
 
-	return &Registry{
-		resourceList: resourceList,
-	}, nil
+	return registry, nil
 }
 
-func (t *factory) checkLabelExistsInSystemBuilderList(builder Builder) bool {
+func (t *factory) unsafeCheckLabelExistsInSystemBuilderList(builder Builder) bool {
 	_, ok := t.systemBuilderList[builder.Label()]
 	return ok
 }
 
-func (t *factory) compareBuilderWithExistingSystemBuilder(builder Builder) bool {
+func (t *factory) unsafeCompareBuilderWithExistingSystemBuilder(builder Builder) bool {
 	return reflect.TypeOf(t.systemBuilderList[builder.Label()]) == reflect.TypeOf(builder)
 }
