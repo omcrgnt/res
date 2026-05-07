@@ -15,8 +15,8 @@ func Register(b Builder) {
 	gf.register(b)
 }
 
-func GlobalFactory() *factory {
-	return gf
+func Build(source any) error {
+	return gf.withSource(source).run()
 }
 
 type factory struct {
@@ -31,7 +31,7 @@ func newFactory() *factory {
 	}
 }
 
-func (t *factory) WithSource(source any) *factory {
+func (t *factory) withSource(source any) *factory {
 	t.userSource = source
 	return t
 }
@@ -43,47 +43,36 @@ func (t *factory) register(b Builder) {
 	t.systemBuilderList[reflect.TypeOf(b)] = b
 }
 
-func (t *factory) Build() error {
-	reg, err := t.build()
-	if err != nil {
-		return err
-	}
-
-	// Обновляем глобальную переменную
-	t.mu.Lock()
-	globalRegistry = reg
-	t.mu.Unlock()
-
-	return nil
-}
-
-func (t *factory) build() (*registry, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
+func (t *factory) run() error {
 	var (
-		reg             = newRegistry()
-		userBuilderList = extractor.New[Builder](t.userSource).Extract()
 		finalBuilders   = make(map[reflect.Type]Builder)
+		userBuilderList = extractor.New[Builder](t.userSource).Extract()
 	)
 
+	t.mu.Lock()
 	maps.Copy(finalBuilders, t.systemBuilderList)
+	t.mu.Unlock()
 
 	for _, b := range userBuilderList {
 		bType := reflect.TypeOf(b)
 		finalBuilders[bType] = b
 	}
 
+	var reg = newRegistry()
 	for _, b := range finalBuilders {
 		resource, err := b.Build()
 		if err != nil {
-			return nil, fmt.Errorf("build resource failed for builder %T: %w", b, err)
+			return fmt.Errorf("build resource failed for builder %T: %w", b, err)
 		}
 
 		if err := addAny(reg, resource); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return reg, nil
+	t.mu.Lock()
+	globalRegistry = reg
+	t.mu.Unlock()
+
+	return nil
 }
