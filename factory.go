@@ -3,17 +3,13 @@ package res
 import (
 	"errors"
 	"fmt"
-	"maps"
+	"reflect"
 	"sync"
 
 	"github.com/mcrgnt/extractor"
 )
 
-var ErrResourceRegisteredAlready = errors.New("resource already registered")
-
-var (
-	gf = newFactory()
-)
+var gf = newFactory()
 
 func Register(b Builder) {
 	gf.register(b)
@@ -40,23 +36,27 @@ func newFactory() *factory {
 	}
 }
 
+func (t *factory) WithSource(source any) *factory {
+	t.userSource = source
+	return t
+}
+
+func (t *factory) Build() (*Registry, error) {
+	return t.build()
+}
+
 func (t *factory) register(b Builder) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	label := b.Label()
 	if _, ok := t.systemBuilderList[label]; ok {
-		t.err = errors.Join(t.err, fmt.Errorf("%w: label %q", ErrResourceRegisteredAlready, label))
+		t.err = errors.Join(t.err, fmt.Errorf("resource already registered with label: %q", label))
 	}
 	t.systemBuilderList[label] = b
 }
 
-func (t *factory) WithSource(source any) *factory {
-	t.userSource = source
-	return t
-}
-
-func (t *factory) Build() ([]any, error) {
+func (t *factory) build() (*Registry, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -65,22 +65,30 @@ func (t *factory) Build() ([]any, error) {
 	}
 
 	var (
-		resourceList    []any
+		builderList     []Builder
 		userBuilderList = extractor.New[Builder](t.userSource).Extract()
 	)
 
 	for _, builder := range userBuilderList {
-		t.userBuilderList[builder.Label()] = builder
+		switch t.checkLabelExistsInSystemBuilderList(builder) {
+		case true:
+			if t.compareBuilderWithExistingSystemBuilder(builder) {
+				t.systemBuilderList[builder.Label()] = builder
+			}
+		default:
+			t.userBuilderList[builder.Label()] = builder
+		}
 	}
 
-	allBuilders := make(map[string]Builder, len(t.systemBuilderList)+len(userBuilderList))
-	maps.Copy(allBuilders, t.systemBuilderList)
-
-	for _, b := range userBuilderList {
-		allBuilders[b.Label()] = b
+	for _, builder := range t.systemBuilderList {
+		builderList = append(builderList, builder)
 	}
 
-	for _, builder := range allBuilders {
+	for _, builder := range t.userBuilderList {
+		builderList = append(builderList, builder)
+	}
+
+	for _, builder := range builderList {
 		resource, err := builder.Build()
 		if err != nil {
 			return nil, err
@@ -88,14 +96,16 @@ func (t *factory) Build() ([]any, error) {
 		resourceList = append(resourceList, resource)
 	}
 
-	return resourceList, nil
+	return &Registry{
+		resourceList: resourceList,
+	}, nil
 }
 
-// func (t *factory) CloneSystem() *factory {
-// 	t.mu.RLock()
-// 	defer t.mu.RUnlock()
+func (t *factory) checkLabelExistsInSystemBuilderList(builder Builder) bool {
+	_, ok := t.systemBuilderList[builder.Label()]
+	return ok
+}
 
-// 	newFactory := newFactory()
-// 	maps.Copy(newFactory.systemBuilderList, t.systemBuilderList)
-// 	return newFactory
-// }
+func (t *factory) compareBuilderWithExistingSystemBuilder(builder Builder) bool {
+	return reflect.TypeOf(t.systemBuilderList[builder.Label()]) == reflect.TypeOf(builder)
+}
