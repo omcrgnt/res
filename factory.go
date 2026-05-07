@@ -1,8 +1,8 @@
 package res
 
 import (
-	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"sync"
 
@@ -21,18 +21,13 @@ func GlobalFactory() *factory {
 
 type factory struct {
 	mu                sync.RWMutex
-	systemBuilderList map[string]Builder
-
-	userSource      any
-	userBuilderList map[string]Builder
-
-	err error
+	systemBuilderList map[reflect.Type]Builder
+	userSource        any
 }
 
 func newFactory() *factory {
 	return &factory{
-		systemBuilderList: make(map[string]Builder),
-		userBuilderList:   make(map[string]Builder),
+		systemBuilderList: make(map[reflect.Type]Builder),
 	}
 }
 
@@ -41,70 +36,54 @@ func (t *factory) WithSource(source any) *factory {
 	return t
 }
 
-func (t *factory) Build() (*registry, error) {
-	return t.build()
-}
-
 func (t *factory) register(b Builder) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	label := b.Label()
-	if _, ok := t.systemBuilderList[label]; ok {
-		t.err = errors.Join(t.err, fmt.Errorf("resource already registered with label: %q", label))
+	t.systemBuilderList[reflect.TypeOf(b)] = b
+}
+
+func (t *factory) Build() error {
+	reg, err := t.build()
+	if err != nil {
+		return err
 	}
-	t.systemBuilderList[label] = b
+
+	// Обновляем глобальную переменную
+	t.mu.Lock()
+	globalRegistry = reg
+	t.mu.Unlock()
+
+	return nil
 }
 
 func (t *factory) build() (*registry, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.err != nil {
-		return nil, t.err
-	}
-
 	var (
-		builderList     []Builder
-		registry        = newRegistry()
+		reg             = newRegistry()
 		userBuilderList = extractor.New[Builder](t.userSource).Extract()
+		finalBuilders   = make(map[reflect.Type]Builder)
 	)
 
-	for _, builder := range userBuilderList {
-		switch t.unsafeCheckLabelExistsInSystemBuilderList(builder) {
-		case true:
-			if t.unsafeCompareBuilderWithExistingSystemBuilder(builder) {
-				t.systemBuilderList[builder.Label()] = builder
-			}
-		default:
-			t.userBuilderList[builder.Label()] = builder
-		}
+	maps.Copy(finalBuilders, t.systemBuilderList)
+
+	for _, b := range userBuilderList {
+		bType := reflect.TypeOf(b)
+		finalBuilders[bType] = b
 	}
 
-	for _, builder := range t.systemBuilderList {
-		builderList = append(builderList, builder)
-	}
-
-	for _, builder := range t.userBuilderList {
-		builderList = append(builderList, builder)
-	}
-
-	for _, builder := range builderList {
-		resource, err := builder.Build()
+	for _, b := range finalBuilders {
+		resource, err := b.Build()
 		if err != nil {
+			return nil, fmt.Errorf("build resource failed for builder %T: %w", b, err)
+		}
+
+		if err := addAny(reg, resource); err != nil {
 			return nil, err
 		}
-		addAny(registry, resource)
 	}
 
-	return registry, nil
-}
-
-func (t *factory) unsafeCheckLabelExistsInSystemBuilderList(builder Builder) bool {
-	_, ok := t.systemBuilderList[builder.Label()]
-	return ok
-}
-
-func (t *factory) unsafeCompareBuilderWithExistingSystemBuilder(builder Builder) bool {
-	return reflect.TypeOf(t.systemBuilderList[builder.Label()]) == reflect.TypeOf(builder)
+	return reg, nil
 }
