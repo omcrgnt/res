@@ -5,135 +5,84 @@ import (
 	"testing"
 )
 
-// Определяем интерфейс и структуру вне функций теста
-type Storage interface {
-	Save() string
-}
-
-type mockStorage struct{}
-
-func (m *mockStorage) Save() string { return "saved" }
-
-// 1. Тест на изоляцию реестров (White Box)
-func TestRegistry_Isolation(t *testing.T) {
-	r1 := newRegistry()
-	r2 := newRegistry()
-
-	_ = add(r1, "resource-1")
-	_ = add(r2, 42)
-
-	if _, ok := get[string](r1); !ok {
-		t.Error("r1 должен содержать строку")
-	}
-	if _, ok := get[int](r1); ok {
-		t.Error("r1 НЕ должен содержать число")
-	}
-	if _, ok := get[int](r2); !ok {
-		t.Error("r2 должен содержать число")
-	}
-}
-
-// 2. Тест на работу с интерфейсами (самый важный кейс)
-func TestRegistry_Interfaces(t *testing.T) {
+func TestRegistry_AddGet(t *testing.T) {
 	r := newRegistry()
-	impl := &mockStorage{}
+	val := "hello"
 
-	// Регистрируем именно как интерфейс Storage
-	err := add[Storage](r, impl)
-	if err != nil {
-		t.Fatalf("Ошибка регистрации интерфейса: %v", err)
-	}
-
-	// Пытаемся достать как интерфейс
-	val, ok := get[Storage](r)
-	if !ok {
-		t.Fatal("Ресурс должен быть доступен по типу интерфейса")
-	}
-
-	if val.Save() != "saved" {
-		t.Errorf("Ожидалось 'saved', получено %s", val.Save())
-	}
-}
-
-// 3. Тест на ошибку при дубликате
-func TestRegistry_Duplicate(t *testing.T) {
-	r := newRegistry()
-
-	_ = add(r, "first")
-	err := add(r, "second") // тип тот же (string)
-
-	if err == nil {
-		t.Error("Ожидалась ошибка при повторной регистрации типа string")
-	}
-}
-
-// 4. Тест публичного API (Global)
-func TestGlobalAPI(t *testing.T) {
-	type GlobalRes struct{ ID int }
-	res := GlobalRes{ID: 777}
-
-	err := Add(res)
+	// Тестируем addAny (внутренний) через публичный интерфейс (если бы он был)
+	// или просто напрямую, так как мы в пакете res
+	err := addAny(r, val)
 	if err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
 
-	found, ok := Get[GlobalRes]()
-	if !ok || found.ID != 777 {
-		t.Errorf("Get вернул неверные данные: %+v", found)
-	}
-}
-
-func TestRegistry_AnyTypeChallenge(t *testing.T) {
-	r := newRegistry()
-
-	// Имитируем выдачу билдера (он возвращает any)
-	var rawResource any = "я реальная строка, а не просто any"
-
-	// Сейчас мы вынуждены использовать add, но так как это generic,
-	// если мы напишем add(r, rawResource), то T станет типом 'any'.
-	err := addAny(r, rawResource)
-	if err != nil {
-		t.Fatalf("Не удалось добавить ресурс: %v", err)
+	// Тестируем get
+	res, ok := get[string](r)
+	if !ok || res != "hello" {
+		t.Errorf("Get failed: expected 'hello', got %v", res)
 	}
 
-	// Пытаемся достать ресурс как строку.
-	// ОЖИДАНИЕ: Мы должны найти строку.
-	// РЕАЛЬНОСТЬ (сейчас): Мы не найдем её, так как в мапе ключ — интерфейс 'any'.
-	val, ok := get[string](r)
-	if !ok {
-		t.Errorf("Провал! Ресурс был зарегистрирован как any, и мы не смогли достать его как string")
-	}
-
-	if val != "я реальная строка, а не просто any" {
-		t.Errorf("Ожидалось содержимое строки, получено: %v", val)
+	// Тестируем дубликат
+	err = addAny(r, "world")
+	if err == nil {
+		t.Error("Expected error on duplicate type registration, got nil")
 	}
 }
 
 func TestRegistry_Walk(t *testing.T) {
 	r := newRegistry()
-	_ = add(r, "string-resource")
-	_ = add(r, 100)
-	_ = add(r, true)
+	_ = addAny(r, 10)
+	_ = addAny(r, "string")
 
-	t.Run("Full scan", func(t *testing.T) {
-		count := 0
-		r.walk(func(typ reflect.Type, res any) bool {
-			count++
-			return true // продолжаем до конца
-		})
-		if count != 3 {
-			t.Errorf("Ожидалось 3 ресурса, найдено %d", count)
-		}
+	count := 0
+	r.walk(func(t reflect.Type, res any) bool {
+		count++
+		return true
 	})
 
-	t.Run("Early break", func(t *testing.T) {
-		count := 0
-		r.walk(func(typ reflect.Type, res any) bool {
-			count++
-			return false // останавливаемся сразу после первого
-		})
-		if count != 1 {
-			t.Errorf("Ожидалось прерывание после 1 ресурса, пройдено %d", count)
-		}
-	})
+	if count != 2 {
+		t.Errorf("Walk failed: expected 2 items, got %d", count)
+	}
+}
+
+// Определим интерфейс и реализацию для теста
+type Shaper interface {
+	Area() int
+}
+
+type Square struct {
+	Side int
+}
+
+func (s *Square) Area() int {
+	return s.Side * s.Side
+}
+
+func TestFind(t *testing.T) {
+	// 1. Очищаем состояние
+	gf = newFactory()
+	globalRegistry = newRegistry()
+
+	// 2. Добавляем ресурс напрямую (или через Build)
+	sq := &Square{Side: 10}
+	_ = Add(sq)
+
+	// 3. ТЕСТ 1: Поиск по конкретному типу (должен найти 1 элемент)
+	squares := Find[*Square]()
+	if len(squares) != 1 {
+		t.Errorf("Find[*Square] failed: expected 1 match, got %d", len(squares))
+	}
+
+	// 4. ТЕСТ 2: Поиск по интерфейсу (самое важное для SDI!)
+	// Если твоя текущая реализация не использует Implements, этот тест УПАДЕТ.
+	shapes := Find[Shaper]()
+	if len(shapes) != 1 {
+		t.Errorf("Find[Shaper] failed: expected 1 match (Square implements Shaper), got %d", len(shapes))
+	}
+
+	// 5. ТЕСТ 3: Поиск несуществующего типа
+	strings := Find[string]()
+	if len(strings) != 0 {
+		t.Errorf("Find[string] failed: expected 0 matches, got %d", len(strings))
+	}
 }

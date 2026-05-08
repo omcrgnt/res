@@ -11,12 +11,40 @@ import (
 
 var gf = newFactory()
 
+// Register регистрирует системный билдер в глобальной фабрике.
+//
+// Обычно вызывается в блоке init() пакетов инфраструктуры или сторонних библиотек.
+// Если при вызове Build() в источнике (source) обнаружится билдер того же типа,
+// системный билдер будет заменен пользовательским.
 func Register(b Builder) {
 	gf.register(b)
 }
 
-func GlobalFactory() *factory {
-	return gf
+// Build собирает глобальный реестр ресурсов, используя предоставленный источник (source).
+//
+// В качестве источника может выступать структура (struct), срез (slice) или карта (map).
+// Функция извлекает из источника все объекты, реализующие интерфейс Builder,
+// инициализирует их и сохраняет результат в реестре.
+//
+// Если типы билдеров в источнике совпадают с системными (зарегистрированными через Register),
+// пользовательские билдеры переопределяют системные.
+func Build(source any) error {
+	var localFactory = newFactory()
+
+	gf.mu.RLock()
+	maps.Copy(localFactory.systemBuilderList, gf.systemBuilderList)
+	gf.mu.RUnlock()
+
+	reg, err := localFactory.withSource(source).run()
+	if err != nil {
+		return err
+	}
+
+	gf.mu.Lock()
+	globalRegistry = reg
+	gf.mu.Unlock()
+
+	return nil
 }
 
 type factory struct {
@@ -31,7 +59,7 @@ func newFactory() *factory {
 	}
 }
 
-func (t *factory) WithSource(source any) *factory {
+func (t *factory) withSource(source any) *factory {
 	t.userSource = source
 	return t
 }
@@ -43,29 +71,13 @@ func (t *factory) register(b Builder) {
 	t.systemBuilderList[reflect.TypeOf(b)] = b
 }
 
-func (t *factory) Build() error {
-	reg, err := t.build()
-	if err != nil {
-		return err
-	}
+func (t *factory) run() (*registry, error) {
+	var finalBuilders = make(map[reflect.Type]Builder)
+	var userBuilderList []Builder
 
-	// Обновляем глобальную переменную
-	t.mu.Lock()
-	globalRegistry = reg
-	t.mu.Unlock()
-
-	return nil
-}
-
-func (t *factory) build() (*registry, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	var (
-		reg             = newRegistry()
+	if t.userSource != nil {
 		userBuilderList = extractor.New[Builder](t.userSource).Extract()
-		finalBuilders   = make(map[reflect.Type]Builder)
-	)
+	}
 
 	maps.Copy(finalBuilders, t.systemBuilderList)
 
@@ -74,6 +86,7 @@ func (t *factory) build() (*registry, error) {
 		finalBuilders[bType] = b
 	}
 
+	var reg = newRegistry()
 	for _, b := range finalBuilders {
 		resource, err := b.Build()
 		if err != nil {

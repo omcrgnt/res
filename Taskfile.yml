@@ -1,0 +1,11 @@
+version: 3
+
+tasks:
+  test:
+    cmds:
+      - |
+        docker run --rm \
+          -v "{{.USER_WORKING_DIR}}:/workspace" \
+          -w /workspace \
+          golang:alpine \
+          sh -c "apk add --no-cache build-base && go test -race -v ./..."
