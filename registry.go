@@ -15,6 +15,9 @@ func keyOf[T any]() reflect.Type {
 // Add добавляет готовый ресурс в глобальный реестр напрямую.
 // Возвращает ошибку, если ресурс такого типа уже зарегистрирован.
 func Add[T any](t T) error {
+	gf.mu.Lock()
+	defer gf.mu.Unlock()
+
 	return add(globalRegistry, t)
 }
 
@@ -54,7 +57,11 @@ func addAny(r *registry, res any) error {
 // Если запрашивается интерфейс, функция попытается найти в реестре объект,
 // реализующий этот интерфейс. Возвращает (resource, true), если поиск успешен.
 func Get[T any]() (T, bool) {
-	return get[T](globalRegistry)
+	gf.mu.RLock()
+	r := globalRegistry
+	gf.mu.RUnlock()
+
+	return get[T](r)
 }
 
 func get[T any](r *registry) (T, bool) {
@@ -75,7 +82,11 @@ func get[T any](r *registry) (T, bool) {
 // Walk выполняет обход всех зарегистрированных ресурсов в глобальном реестре.
 // Функция fn вызывается для каждого ресурса; если она возвращает false, обход прерывается.
 func Walk(fn func(t reflect.Type, res any) bool) {
-	globalRegistry.walk(fn)
+	gf.mu.RLock()
+	r := globalRegistry
+	gf.mu.RUnlock()
+
+	r.walk(fn)
 }
 
 type registry struct {
@@ -110,10 +121,14 @@ func (r *registry) unsafeFind(t reflect.Type) (any, bool) {
 // Если T — не интерфейс (конкретный тип: структура, строка, число и т.д.),
 // вернется срез, содержащий максимум один элемент.
 func Find[T any]() []T {
+	gf.mu.RLock()
+	r := globalRegistry
+	gf.mu.RUnlock()
+
 	var matches []T
 	targetType := reflect.TypeFor[T]()
 
-	globalRegistry.walk(func(t reflect.Type, res any) bool {
+	r.walk(func(t reflect.Type, res any) bool {
 		switch targetType.Kind() {
 		case reflect.Interface:
 			// Если ищем интерфейс — проверяем, реализует ли его тип ресурса

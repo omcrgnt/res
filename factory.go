@@ -29,7 +29,22 @@ func Register(b Builder) {
 // Если типы билдеров в источнике совпадают с системными (зарегистрированными через Register),
 // пользовательские билдеры переопределяют системные.
 func Build(source any) error {
-	return gf.withSource(source).run()
+	var localFactory = newFactory()
+
+	gf.mu.RLock()
+	maps.Copy(localFactory.systemBuilderList, gf.systemBuilderList)
+	gf.mu.RUnlock()
+
+	reg, err := localFactory.withSource(source).run()
+	if err != nil {
+		return err
+	}
+
+	gf.mu.Lock()
+	globalRegistry = reg
+	gf.mu.Unlock()
+
+	return nil
 }
 
 type factory struct {
@@ -56,15 +71,15 @@ func (t *factory) register(b Builder) {
 	t.systemBuilderList[reflect.TypeOf(b)] = b
 }
 
-func (t *factory) run() error {
-	var (
-		finalBuilders   = make(map[reflect.Type]Builder)
-		userBuilderList = extractor.New[Builder](t.userSource).Extract()
-	)
+func (t *factory) run() (*registry, error) {
+	var finalBuilders = make(map[reflect.Type]Builder)
+	var userBuilderList []Builder
 
-	t.mu.Lock()
+	if t.userSource != nil {
+		userBuilderList = extractor.New[Builder](t.userSource).Extract()
+	}
+
 	maps.Copy(finalBuilders, t.systemBuilderList)
-	t.mu.Unlock()
 
 	for _, b := range userBuilderList {
 		bType := reflect.TypeOf(b)
@@ -75,17 +90,13 @@ func (t *factory) run() error {
 	for _, b := range finalBuilders {
 		resource, err := b.Build()
 		if err != nil {
-			return fmt.Errorf("build resource failed for builder %T: %w", b, err)
+			return nil, fmt.Errorf("build resource failed for builder %T: %w", b, err)
 		}
 
 		if err := addAny(reg, resource); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	t.mu.Lock()
-	globalRegistry = reg
-	t.mu.Unlock()
-
-	return nil
+	return reg, nil
 }
