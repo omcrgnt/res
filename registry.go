@@ -12,6 +12,8 @@ func keyOf[T any]() reflect.Type {
 	return reflect.TypeFor[T]()
 }
 
+// Add добавляет готовый ресурс в глобальный реестр напрямую.
+// Возвращает ошибку, если ресурс такого типа уже зарегистрирован.
 func Add[T any](t T) error {
 	return add(globalRegistry, t)
 }
@@ -48,6 +50,9 @@ func addAny(r *registry, res any) error {
 	return nil
 }
 
+// Get извлекает ресурс из глобального реестра по его типу.
+// Если запрашивается интерфейс, функция попытается найти в реестре объект,
+// реализующий этот интерфейс. Возвращает (resource, true), если поиск успешен.
 func Get[T any]() (T, bool) {
 	return get[T](globalRegistry)
 }
@@ -67,6 +72,8 @@ func get[T any](r *registry) (T, bool) {
 	return val.(T), true
 }
 
+// Walk выполняет обход всех зарегистрированных ресурсов в глобальном реестре.
+// Функция fn вызывается для каждого ресурса; если она возвращает false, обход прерывается.
 func Walk(fn func(t reflect.Type, res any) bool) {
 	globalRegistry.walk(fn)
 }
@@ -96,4 +103,35 @@ func (r *registry) walk(fn func(t reflect.Type, res any) bool) {
 func (r *registry) unsafeFind(t reflect.Type) (any, bool) {
 	val, ok := r.resourceList[t]
 	return val, ok
+}
+
+// Find возвращает список всех ресурсов, соответствующих типу T.
+// Если T — интерфейс, функция вернет все ресурсы, реализующие его.
+// Если T — не интерфейс (конкретный тип: структура, строка, число и т.д.),
+// вернется срез, содержащий максимум один элемент.
+func Find[T any]() []T {
+	var matches []T
+	targetType := reflect.TypeFor[T]()
+
+	globalRegistry.walk(func(t reflect.Type, res any) bool {
+		switch targetType.Kind() {
+		case reflect.Interface:
+			// Если ищем интерфейс — проверяем, реализует ли его тип ресурса
+			if t.Implements(targetType) {
+				if val, ok := res.(T); ok {
+					matches = append(matches, val)
+				}
+			}
+		default:
+			// Для всех остальных типов (структуры, строки и т.д.) — только точное совпадение
+			if t == targetType {
+				if val, ok := res.(T); ok {
+					matches = append(matches, val)
+				}
+			}
+		}
+		return true
+	})
+
+	return matches
 }
