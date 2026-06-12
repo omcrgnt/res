@@ -2,24 +2,31 @@
 Пакет res — хранилище ресурсов приложения с поддержкой Transform и интеграции с sdi.
 
 Сборка ресурсов (config, builder) выполняется снаружи; res принимает готовые объекты
-через Add, AddAll или res.Default.Add (builder.Registrar).
+через AddBuiltin (system) или Add / AddAll (user, builder.Registrar).
+
+Devconv:
+  - AddBuiltin — system defaults из init (import _ "…/logger")
+  - Add — user config из builder.Build
+  - enforcement — golangci profiles в github.com/omcrgnt/lint
 
 Основные возможности:
-  - Add / AddAll / Default.Add: регистрация готовых ресурсов
-  - Transform: подготовка ресурсов перед wiring (obs, метрики и т.д.)
+  - AddBuiltin / Add / AddAll / Default.Add: регистрация ресурсов
+  - Origin (System | User), WalkEntries — metadata для SDI cleanup
+  - Remove — снятие ресурса по identity
+  - Transform: подготовка ресурсов перед wiring
   - Default / Walk: read-only pool для sdi.Resolve
-  - Get / Find: типизированный доступ после wiring
+  - Get / Find: типизированный доступ
 
-Типичный pipeline (оркестрация в main):
+Типичный pipeline:
 
 	ecfg.Parse → builder.Build(cfg, res.Default)
 	res.Transform(obs.Instrument)
 	sdi.Resolve(res.Default)
-	res.Get / res.Find
 
 Ограничения:
   - один concrete type — один ресурс в byType
+  - Add заменяет system-ресурс того же concrete type
+  - несколько implementor одного interface допустимы до sdi.Resolve
   - Transform выполнять до sdi.Resolve
-  - после Transform с обёрткой Get по старому concrete type может не сработать — используйте Find по интерфейсу
 */
 package res
