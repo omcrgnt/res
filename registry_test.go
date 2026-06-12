@@ -9,8 +9,7 @@ func TestRegistry_AddGet(t *testing.T) {
 	r := newRegistry()
 	val := "hello"
 
-	err := addAny(r, val)
-	if err != nil {
+	if err := addUser(r, val); err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
 
@@ -19,20 +18,18 @@ func TestRegistry_AddGet(t *testing.T) {
 		t.Errorf("Get failed: expected 'hello', got %v", res)
 	}
 
-	err = addAny(r, "world")
-	if err == nil {
-		t.Error("Expected error on duplicate type registration, got nil")
+	if err := addUser(r, "world"); err == nil {
+		t.Error("expected error on duplicate type registration")
 	}
 }
 
-func TestAddAny_nil(t *testing.T) {
+func TestAdd_nil(t *testing.T) {
 	r := newRegistry()
-	err := addAny(r, nil)
-	if err == nil {
+	if err := addUser(r, nil); err == nil {
 		t.Fatal("expected error for nil resource")
 	}
-	if err.Error() != "cannot add nil resource" {
-		t.Errorf("unexpected error: %v", err)
+	if err := addBuiltin(r, nil); err == nil {
+		t.Fatal("expected error for nil builtin")
 	}
 }
 
@@ -90,6 +87,85 @@ func TestDefault_Add(t *testing.T) {
 	}
 }
 
+func TestAddBuiltin(t *testing.T) {
+	resetGlobalRegistry()
+
+	if err := AddBuiltin("system"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddBuiltin("again"); err == nil {
+		t.Fatal("expected duplicate system error")
+	}
+
+	var origin Origin
+	WalkEntries(func(e Entry) bool {
+		origin = e.Origin
+		return true
+	})
+	if origin != System {
+		t.Fatalf("origin: got %v want System", origin)
+	}
+}
+
+func TestAdd_replacesSystem(t *testing.T) {
+	resetGlobalRegistry()
+
+	type widget struct{ n int }
+
+	if err := AddBuiltin(&widget{n: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(&widget{n: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := Get[*widget]()
+	if !ok || got.n != 2 {
+		t.Fatalf("got %+v ok=%v", got, ok)
+	}
+
+	var origin Origin
+	WalkEntries(func(e Entry) bool {
+		origin = e.Origin
+		return true
+	})
+	if origin != User {
+		t.Fatalf("origin: got %v want User", origin)
+	}
+	if countGlobal() != 1 {
+		t.Fatalf("expected 1 resource after replace, got %d", countGlobal())
+	}
+}
+
+func TestAddBuiltin_afterUser(t *testing.T) {
+	resetGlobalRegistry()
+
+	if err := Add("user"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddBuiltin("system"); err == nil {
+		t.Fatal("expected error when AddBuiltin after user same type")
+	}
+}
+
+func TestRemove(t *testing.T) {
+	resetGlobalRegistry()
+
+	s := "remove-me"
+	if err := Add(s); err != nil {
+		t.Fatal(err)
+	}
+	if err := Remove("other"); err == nil {
+		t.Fatal("expected not found")
+	}
+	if err := Remove(s); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := Get[string](); ok {
+		t.Fatal("expected removed")
+	}
+}
+
 func TestDefault_Walk(t *testing.T) {
 	resetGlobalRegistry()
 	_ = AddAll("a", 2)
@@ -107,8 +183,8 @@ func TestDefault_Walk(t *testing.T) {
 
 func TestRegistry_Walk(t *testing.T) {
 	r := newRegistry()
-	_ = addAny(r, 10)
-	_ = addAny(r, "string")
+	_ = addUser(r, 10)
+	_ = addUser(r, "string")
 
 	count := 0
 	r.walk(func(t reflect.Type, res any) bool {
@@ -123,9 +199,9 @@ func TestRegistry_Walk(t *testing.T) {
 
 func TestRegistry_Walk_stopsOnFalse(t *testing.T) {
 	r := newRegistry()
-	_ = addAny(r, "one")
-	_ = addAny(r, 2)
-	_ = addAny(r, true)
+	_ = addUser(r, "one")
+	_ = addUser(r, 2)
+	_ = addUser(r, true)
 
 	var seen []any
 	r.walk(func(t reflect.Type, res any) bool {
@@ -204,6 +280,33 @@ func TestFind(t *testing.T) {
 	}
 }
 
+type writePort interface {
+	Write([]byte) (int, error)
+}
+
+type stdoutSink struct{}
+
+func (stdoutSink) Write(p []byte) (int, error) { return len(p), nil }
+
+type fileSink struct{}
+
+func (fileSink) Write(p []byte) (int, error) { return len(p), nil }
+
+func TestAddBuiltin_and_Add_sameInterface(t *testing.T) {
+	resetGlobalRegistry()
+
+	if err := AddBuiltin(stdoutSink{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(fileSink{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := len(Find[writePort]()); n != 2 {
+		t.Fatalf("expected 2 implementors, got %d", n)
+	}
+}
+
 func TestTransform_noop(t *testing.T) {
 	resetGlobalRegistry()
 	_ = AddAll(&Square{Side: 5})
@@ -216,6 +319,29 @@ func TestTransform_noop(t *testing.T) {
 	sq, ok := Get[*Square]()
 	if !ok || sq.Side != 5 {
 		t.Errorf("expected square after noop transform, got %v ok=%v", sq, ok)
+	}
+}
+
+func TestTransform_preservesOrigin(t *testing.T) {
+	resetGlobalRegistry()
+	_ = AddBuiltin(&Square{Side: 1})
+
+	if err := Transform(func(r any) any {
+		if sq, ok := r.(*Square); ok {
+			return &Square{Side: sq.Side + 1}
+		}
+		return r
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var origin Origin
+	WalkEntries(func(e Entry) bool {
+		origin = e.Origin
+		return true
+	})
+	if origin != System {
+		t.Fatalf("origin after transform: got %v want System", origin)
 	}
 }
 

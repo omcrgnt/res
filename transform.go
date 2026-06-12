@@ -21,8 +21,9 @@ func (r *registry) transform(fns ...TransformFunc) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for i, res := range r.resources {
-		oldType := reflect.TypeOf(res)
+	for i, e := range r.resources {
+		oldType := reflect.TypeOf(e.value)
+		res := e.value
 
 		for _, fn := range fns {
 			res = fn(res)
@@ -35,8 +36,9 @@ func (r *registry) transform(fns ...TransformFunc) error {
 				return fmt.Errorf("transform: type %v is already registered", newType)
 			}
 		}
-		r.byType[newType] = res
-		r.resources[i] = res
+		e.value = res
+		r.byType[newType] = e
+		r.resources[i] = e
 	}
 
 	return nil
