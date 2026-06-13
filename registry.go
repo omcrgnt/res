@@ -57,11 +57,6 @@ func AddAll(resources ...any) error {
 	return nil
 }
 
-// Remove deletes a resource by value identity.
-func Remove(v any) error {
-	return removeAny(globalRegistry, v)
-}
-
 // Walk performs a read-only walk in registration order.
 func Walk(fn func(t reflect.Type, res any) bool) {
 	globalRegistry.walk(fn)
@@ -189,32 +184,6 @@ func addUser(r *registry, res any) error {
 		}
 	}
 	return fmt.Errorf("resource of type %v: internal inconsistency", key)
-}
-
-func removeAny(r *registry, v any) error {
-	if v == nil {
-		return fmt.Errorf("cannot remove nil resource")
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	idx := -1
-	var key reflect.Type
-	for i, e := range r.resources {
-		if e.value == v {
-			idx = i
-			key = reflect.TypeOf(v)
-			break
-		}
-	}
-	if idx < 0 {
-		return fmt.Errorf("resource not found")
-	}
-
-	delete(r.byType, key)
-	r.resources = append(r.resources[:idx], r.resources[idx+1:]...)
-	return nil
 }
 
 func (r *registry) walk(fn func(t reflect.Type, res any) bool) {

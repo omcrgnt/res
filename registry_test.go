@@ -148,24 +148,6 @@ func TestAddBuiltin_afterUser(t *testing.T) {
 	}
 }
 
-func TestRemove(t *testing.T) {
-	resetGlobalRegistry()
-
-	s := "remove-me"
-	if err := Add(s); err != nil {
-		t.Fatal(err)
-	}
-	if err := Remove("other"); err == nil {
-		t.Fatal("expected not found")
-	}
-	if err := Remove(s); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := Get[string](); ok {
-		t.Fatal("expected removed")
-	}
-}
-
 func TestDefault_Walk(t *testing.T) {
 	resetGlobalRegistry()
 	_ = AddAll("a", 2)

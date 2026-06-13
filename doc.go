@@ -11,8 +11,8 @@ Devconv:
 
 Основные возможности:
   - AddBuiltin / Add / AddAll / Default.Add: регистрация ресурсов
-  - Origin (System | User), WalkEntries — metadata для SDI cleanup
-  - Remove — снятие ресурса по identity
+  - Origin (System | User), WalkEntries — metadata для Dedup
+  - Dedup — interface dedupe executor для sdi.Resolve (policy в sdi)
   - Transform: подготовка ресурсов перед wiring
   - Default / Walk: read-only pool для sdi.Resolve
   - Get / Find: типизированный доступ
