@@ -2,6 +2,7 @@ package res_test
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/omcrgnt/res"
 )
@@ -10,22 +11,21 @@ type Logger struct {
 	Level string
 }
 
-func ExampleAddAll() {
-	res.AddAll(&Logger{Level: "DEBUG"})
+func ExampleAdd() {
+	res.Add(&Logger{Level: "DEBUG"})
 
-	logger, ok := res.Get[*Logger]()
-	if ok {
-		fmt.Println(logger.Level)
+	entries := res.GetByType(reflect.TypeFor[*Logger]())
+	if len(entries) > 0 {
+		fmt.Println(entries[0].Value.(*Logger).Level)
 	}
 	// Output: DEBUG
 }
 
-func ExampleGet() {
+func ExampleAddWithTags() {
+	res.AddWithTags("default-key", res.TagReplaceable)
 	res.Add("my-secret-key")
 
-	val, ok := res.Get[string]()
-	if ok {
-		fmt.Println("Found:", val)
-	}
-	// Output: Found: my-secret-key
+	entries := res.GetByType(reflect.TypeFor[string]())
+	fmt.Println("count:", len(entries))
+	// Output: count: 2
 }
