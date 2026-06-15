@@ -1,32 +1,28 @@
 /*
-Пакет res — хранилище ресурсов приложения с поддержкой Transform и интеграции с sdi.
+Package res — регистрация и хранение ресурсов приложения.
 
-Сборка ресурсов (config, builder) выполняется снаружи; res принимает готовые объекты
-через AddBuiltin (system) или Add / AddAll (user, builder.Registrar).
+Центральный тип — [Registry] ([Default], [New]): add, query, transform, remove.
+Ресурс в pool представлен [Entry] (concrete type, value, опциональные [Tag]).
+Один type может иметь несколько [Entry]; [Registry.GetByType] и
+[Registry.GetByInterface] возвращают все совпадения (0..N),
+[Registry.GetOneByType] и [Registry.GetOneByInterface] — первое в порядке
+регистрации или [ErrNotFound].
+
+[Tag] — метаданные на [Entry], задаются через [Registry.AddWithTags].
+[Registry] теги только хранит и отдаёт в [Entry.Has]; сам по ним не действует.
+[TagReplaceable] — «запасной вариант»: caller при выборе одного ресурса из
+нескольких может предпочесть запись без этого тега и убрать остальные через
+[Registry.Remove].
+
+API ([Default] и package-level funcs):
+  - create: [Add], [AddWithTags]
+  - read: [WalkEntries], [GetByType], [GetByInterface], [GetOneByType], [GetOneByInterface]
+  - update: [Transform]
+  - delete: [Remove]
 
 Devconv:
-  - AddBuiltin — system defaults из init (import _ "…/logger")
-  - Add — user config из builder.Build
+  - [AddWithTags] с [TagReplaceable] — library defaults (import _ "…/pkg")
+  - [Add] — явная регистрация caller'ом
   - enforcement — golangci profiles в github.com/omcrgnt/lint
-
-Основные возможности:
-  - AddBuiltin / Add / AddAll / Default.Add: регистрация ресурсов
-  - Origin (System | User), WalkEntries — metadata для SDI cleanup
-  - Remove — снятие ресурса по identity
-  - Transform: подготовка ресурсов перед wiring
-  - Default / Walk: read-only pool для sdi.Resolve
-  - Get / Find: типизированный доступ
-
-Типичный pipeline:
-
-	ecfg.Parse → builder.Build(cfg, res.Default)
-	res.Transform(obs.Instrument)
-	sdi.Resolve(res.Default)
-
-Ограничения:
-  - один concrete type — один ресурс в byType
-  - Add заменяет system-ресурс того же concrete type
-  - несколько implementor одного interface допустимы до sdi.Resolve
-  - Transform выполнять до sdi.Resolve
 */
 package res

@@ -1,197 +1,135 @@
 package res
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
 )
 
-var globalRegistry = newRegistry()
+// ErrNotFound is returned by [Registry.GetOneByType] and [Registry.GetOneByInterface]
+// when no matching entry exists.
+var ErrNotFound = errors.New("resource not found")
 
-// Default — глобальный реестр: builder.Add, sdi.Pool (Walk), Get/Find.
-var Default globalAccessor
+// Registry stores application resources as [Entry] values.
+type Registry interface {
+	// Add registers a resource without tags.
+	Add(v any) error
+	// AddWithTags registers a resource with the given tags (duplicates ignored).
+	AddWithTags(v any, tags ...Tag) error
 
-// Instance — алиас Default.
+	// WalkEntries visits entries in registration order.
+	WalkEntries(fn func(Entry) bool)
+	// GetByType returns entries whose [Entry.Type] equals t.
+	GetByType(t reflect.Type) []Entry
+	// GetByInterface returns entries whose [Entry.Type] implements iface.
+	GetByInterface(iface reflect.Type) []Entry
+	// GetOneByType returns the first [Entry.Value] for t in registration order.
+	// See also [Registry.GetByType].
+	GetOneByType(t reflect.Type) (any, error)
+	// GetOneByInterface returns the first matching [Entry.Value] in registration order.
+	// See also [Registry.GetByInterface].
+	GetOneByInterface(iface reflect.Type) (any, error)
+
+	// Transform applies [TransformFunc] to every stored resource in place.
+	Transform(...TransformFunc) error
+
+	// Remove unregisters a resource by Value identity (==).
+	Remove(v any) error
+}
+
+// Default is the global [Registry].
+var Default Registry = New()
+
+// Instance is an alias for [Default].
 var Instance = Default
 
-type globalAccessor struct{}
-
-func (globalAccessor) Add(v any) error {
-	return addUser(globalRegistry, v)
+// New returns an empty [Registry].
+func New() Registry {
+	return &registry{}
 }
 
-func (globalAccessor) AddBuiltin(v any) error {
-	return addBuiltin(globalRegistry, v)
-}
-
-func (globalAccessor) Walk(fn func(t reflect.Type, res any) bool) {
-	globalRegistry.walk(fn)
-}
-
-func (globalAccessor) WalkEntries(fn func(Entry) bool) {
-	globalRegistry.walkEntries(fn)
-}
-
-func keyOf[T any]() reflect.Type {
-	return reflect.TypeFor[T]()
-}
-
-// AddBuiltin registers a system default resource (from package init).
-func AddBuiltin[T any](v T) error {
-	return addBuiltin(globalRegistry, v)
-}
-
-// Add registers a user resource (from builder.Build).
-// Replaces an existing system resource of the same concrete type.
+// Add appends to [Default] via [Registry.Add].
 func Add[T any](v T) error {
-	return addUser(globalRegistry, v)
+	return Default.Add(v)
 }
 
-// AddAll adds user resources to the global registry.
-func AddAll(resources ...any) error {
-	for _, res := range resources {
-		if err := addUser(globalRegistry, res); err != nil {
-			return err
-		}
-	}
-	return nil
+// AddWithTags appends to [Default] via [Registry.AddWithTags].
+func AddWithTags[T any](v T, tags ...Tag) error {
+	return Default.AddWithTags(v, tags...)
 }
 
-// Remove deletes a resource by value identity.
-func Remove(v any) error {
-	return removeAny(globalRegistry, v)
-}
-
-// Walk performs a read-only walk in registration order.
-func Walk(fn func(t reflect.Type, res any) bool) {
-	globalRegistry.walk(fn)
-}
-
-// WalkEntries walks resources including origin metadata.
+// WalkEntries walks [Default] via [Registry.WalkEntries].
 func WalkEntries(fn func(Entry) bool) {
-	globalRegistry.walkEntries(fn)
+	Default.WalkEntries(fn)
 }
 
-// Get returns a resource by concrete type.
-func Get[T any]() (T, bool) {
-	return get[T](globalRegistry)
+// GetByType queries [Default] via [Registry.GetByType].
+func GetByType(t reflect.Type) []Entry {
+	return Default.GetByType(t)
 }
 
-func get[T any](r *registry) (T, bool) {
-	var zero T
-	key := keyOf[T]()
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	e, ok := r.byType[key]
-	if !ok {
-		return zero, false
-	}
-
-	return e.value.(T), true
+// GetByInterface queries [Default] via [Registry.GetByInterface].
+func GetByInterface(iface reflect.Type) []Entry {
+	return Default.GetByInterface(iface)
 }
 
-// Find returns resources matching T (interface or concrete).
-func Find[T any]() []T {
-	var matches []T
-	targetType := reflect.TypeFor[T]()
-
-	globalRegistry.walkEntries(func(e Entry) bool {
-		switch targetType.Kind() {
-		case reflect.Interface:
-			if e.Type.Implements(targetType) {
-				if val, ok := e.Value.(T); ok {
-					matches = append(matches, val)
-				}
-			}
-		default:
-			if e.Type == targetType {
-				if val, ok := e.Value.(T); ok {
-					matches = append(matches, val)
-				}
-			}
-		}
-		return true
-	})
-
-	return matches
+// GetOneByType returns the first match from [Default] via [Registry.GetOneByType].
+func GetOneByType(t reflect.Type) (any, error) {
+	return Default.GetOneByType(t)
 }
 
-type entry struct {
-	value  any
-	origin Origin
+// GetOneByInterface returns the first match from [Default] via [Registry.GetOneByInterface].
+func GetOneByInterface(iface reflect.Type) (any, error) {
+	return Default.GetOneByInterface(iface)
+}
+
+// Transform transforms all entries in [Default] via [Registry.Transform].
+func Transform(fns ...TransformFunc) error {
+	return Default.Transform(fns...)
+}
+
+// Remove deletes from [Default] via [Registry.Remove].
+func Remove(v any) error {
+	return Default.Remove(v)
+}
+
+type item struct {
+	value any
+	tags  tagSet
 }
 
 type registry struct {
-	mu        sync.RWMutex
-	resources []entry
-	byType    map[reflect.Type]entry
+	mu    sync.RWMutex
+	items []item
 }
 
-func newRegistry() *registry {
-	return &registry{
-		byType: make(map[reflect.Type]entry),
+var _ Registry = (*registry)(nil)
+
+func (r *registry) Add(v any) error {
+	return r.add(v, nil)
+}
+
+func (r *registry) AddWithTags(v any, tags ...Tag) error {
+	if len(tags) == 0 {
+		return fmt.Errorf("at least one tag required")
 	}
+	return r.add(v, newTagSet(tags...))
 }
 
-func addBuiltin(r *registry, res any) error {
-	if res == nil {
+func (r *registry) add(v any, tags tagSet) error {
+	if v == nil {
 		return fmt.Errorf("cannot add nil resource")
 	}
-
-	key := reflect.TypeOf(res)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if existing, ok := r.byType[key]; ok {
-		if existing.origin == System {
-			return fmt.Errorf("resource of type %v is already registered", key)
-		}
-		return fmt.Errorf("resource of type %v is already registered by user", key)
-	}
-
-	e := entry{value: res, origin: System}
-	r.byType[key] = e
-	r.resources = append(r.resources, e)
+	r.items = append(r.items, item{value: v, tags: tags})
 	return nil
 }
 
-func addUser(r *registry, res any) error {
-	if res == nil {
-		return fmt.Errorf("cannot add nil resource")
-	}
-
-	key := reflect.TypeOf(res)
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	existing, ok := r.byType[key]
-	if !ok {
-		e := entry{value: res, origin: User}
-		r.byType[key] = e
-		r.resources = append(r.resources, e)
-		return nil
-	}
-
-	if existing.origin == User {
-		return fmt.Errorf("resource of type %v is already registered", key)
-	}
-
-	e := entry{value: res, origin: User}
-	r.byType[key] = e
-	for i := range r.resources {
-		if r.resources[i].value == existing.value {
-			r.resources[i] = e
-			return nil
-		}
-	}
-	return fmt.Errorf("resource of type %v: internal inconsistency", key)
-}
-
-func removeAny(r *registry, v any) error {
+func (r *registry) Remove(v any) error {
 	if v == nil {
 		return fmt.Errorf("cannot remove nil resource")
 	}
@@ -199,50 +137,87 @@ func removeAny(r *registry, v any) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	idx := -1
-	var key reflect.Type
-	for i, e := range r.resources {
-		if e.value == v {
-			idx = i
-			key = reflect.TypeOf(v)
-			break
+	for i, it := range r.items {
+		if it.value == v {
+			r.items = append(r.items[:i], r.items[i+1:]...)
+			return nil
 		}
 	}
-	if idx < 0 {
-		return fmt.Errorf("resource not found")
-	}
-
-	delete(r.byType, key)
-	r.resources = append(r.resources[:idx], r.resources[idx+1:]...)
-	return nil
+	return fmt.Errorf("resource not found")
 }
 
-func (r *registry) walk(fn func(t reflect.Type, res any) bool) {
+func (r *registry) WalkEntries(fn func(Entry) bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	for _, e := range r.resources {
-		if !fn(reflect.TypeOf(e.value), e.value) {
+	for _, it := range r.items {
+		if !fn(entryFromItem(it)) {
 			break
 		}
 	}
 }
 
-func (r *registry) walkEntries(fn func(Entry) bool) {
+func (r *registry) GetByType(t reflect.Type) []Entry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	for _, e := range r.resources {
-		if !fn(Entry{
-			Type:   reflect.TypeOf(e.value),
-			Value:  e.value,
-			Origin: e.origin,
-		}) {
-			break
+	var out []Entry
+	for _, it := range r.items {
+		e := entryFromItem(it)
+		if e.Type == t {
+			out = append(out, e)
 		}
+	}
+	return out
+}
+
+func (r *registry) GetByInterface(iface reflect.Type) []Entry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var out []Entry
+	for _, it := range r.items {
+		e := entryFromItem(it)
+		if e.Type.Implements(iface) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (r *registry) GetOneByType(t reflect.Type) (any, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, it := range r.items {
+		if reflect.TypeOf(it.value) == t {
+			return it.value, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (r *registry) GetOneByInterface(iface reflect.Type) (any, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, it := range r.items {
+		if reflect.TypeOf(it.value).Implements(iface) {
+			return it.value, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func entryFromItem(it item) Entry {
+	return Entry{
+		Type:  reflect.TypeOf(it.value),
+		Value: it.value,
+		tags:  it.tags,
 	}
 }
 
 func resetGlobalRegistry() {
-	globalRegistry = newRegistry()
+	Default = New()
+	Instance = Default
 }

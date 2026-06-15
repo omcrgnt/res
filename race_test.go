@@ -23,7 +23,7 @@ func TestRaceCondition(t *testing.T) {
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			_ = AddAll("bulk")
+			_ = AddWithTags("bulk", TagReplaceable)
 		}()
 	}
 
@@ -37,9 +37,9 @@ func TestRaceCondition(t *testing.T) {
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			_, _ = Get[int]()
-			_ = Find[Shaper]()
-			Walk(func(reflect.Type, any) bool { return true })
+			_ = GetByType(reflect.TypeFor[int]())
+			_ = GetByInterface(reflect.TypeFor[Shaper]())
+			WalkEntries(func(Entry) bool { return true })
 		}()
 	}
 
