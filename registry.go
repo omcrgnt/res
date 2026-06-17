@@ -221,3 +221,9 @@ func resetGlobalRegistry() {
 	Default = New()
 	Instance = Default
 }
+
+// ResetDefault replaces the global registry with an empty one.
+// Intended for tests that need an isolated [Default].
+func ResetDefault() {
+	resetGlobalRegistry()
+}
