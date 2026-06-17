@@ -21,7 +21,7 @@ API ([Default] и package-level funcs):
   - delete: [Remove]
 
 Devconv:
-  - [AddWithTags] с [TagReplaceable] — library defaults (import _ "…/pkg")
+  - [AddWithTags] с [TagReplaceable] — library defaults (import _ "…/use" or _ "github.com/omcrgnt/res/core/use")
   - [Add] — явная регистрация caller'ом
   - enforcement — golangci profiles в github.com/omcrgnt/lint
 */
