@@ -12,7 +12,10 @@ Package res — регистрация и хранение ресурсов пр
 [Registry] теги только хранит и отдаёт в [Entry.Has]; сам по ним не действует.
 [TagReplaceable] — «запасной вариант»: caller при выборе одного ресурса из
 нескольких может предпочесть запись без этого тега и убрать остальные через
-[Registry.Remove].
+[Registry.Remove] (интерпретирует [github.com/omcrgnt/sdi] при dedup).
+
+[TagFixed] — «не подлежит подмене»: при 2+ entries одного dep type
+[sdi.Resolve] завершается ошибкой; запись не удаляется dedup policy.
 
 API ([Default] и package-level funcs):
   - create: [Add], [AddWithTags]

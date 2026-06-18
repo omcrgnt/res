@@ -334,6 +334,45 @@ func TestTransform_preservesTags(t *testing.T) {
 	}
 }
 
+func TestAddWithTags_fixed(t *testing.T) {
+	resetGlobalRegistry()
+	if err := AddWithTags(&Square{Side: 1}, TagFixed); err != nil {
+		t.Fatal(err)
+	}
+
+	var fixed bool
+	WalkEntries(func(e Entry) bool {
+		fixed = e.Fixed()
+		return true
+	})
+	if !fixed {
+		t.Fatal("expected TagFixed on entry")
+	}
+}
+
+func TestTransform_preservesFixedTag(t *testing.T) {
+	resetGlobalRegistry()
+	_ = AddWithTags(&Square{Side: 1}, TagFixed)
+
+	if err := Transform(func(r any) any {
+		if sq, ok := r.(*Square); ok {
+			return &Square{Side: sq.Side + 1}
+		}
+		return r
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var fixed bool
+	WalkEntries(func(e Entry) bool {
+		fixed = e.Fixed()
+		return true
+	})
+	if !fixed {
+		t.Fatalf("TagFixed after transform: got false want true")
+	}
+}
+
 func TestTransform_empty(t *testing.T) {
 	resetGlobalRegistry()
 	_ = Add(&Square{Side: 3})

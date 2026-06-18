@@ -10,6 +10,10 @@ type Tag struct {
 // chooses one of several matching entries.
 var TagReplaceable = Tag{name: "replaceable"}
 
+// TagFixed marks a resource that must not be replaced or deduplicated away.
+// If another entry matches the same dependency type, sdi.Resolve fails.
+var TagFixed = Tag{name: "fixed"}
+
 // Has reports whether e has tag.
 func (e Entry) Has(tag Tag) bool {
 	_, ok := e.tags[tag]
@@ -19,6 +23,11 @@ func (e Entry) Has(tag Tag) bool {
 // Replaceable reports whether e has [TagReplaceable].
 func (e Entry) Replaceable() bool {
 	return e.Has(TagReplaceable)
+}
+
+// Fixed reports whether e has [TagFixed].
+func (e Entry) Fixed() bool {
+	return e.Has(TagFixed)
 }
 
 // Tags returns a copy of tags attached to e.
