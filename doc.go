@@ -8,8 +8,23 @@ Package res — регистрация и хранение ресурсов пр
 [Registry.GetOneByType] и [Registry.GetOneByInterface] — первое в порядке
 регистрации или [ErrNotFound].
 
+Config-entry и resource-entry
+
+До [github.com/omcrgnt/builder].Build в pool лежат config-entry — значения,
+реализующие Build() (any, error) ([github.com/omcrgnt/builder].Builder).
+Их регистрируют library use init через [AddWithTags] (Replaceable/Fixed defaults)
+и [github.com/omcrgnt/ecfg].Register из AppConfig ([Add], explicit, без tags).
+
+Build обходит registry, вызывает Build(), регистрирует resource-entry с
+наследованием [Entry.Tags] и удаляет config-entry через [Registry.Remove].
+После Build в pool остаются resource-entry (и legacy non-Builder entries, если есть).
+
+Pipeline:
+
+	ecfg.Parse → ecfg.Register(cfg, res) → builder.Build(res) → res.Transform → sdi.Resolve
+
 [Tag] — метаданные на [Entry], задаются через [Registry.AddWithTags].
-[Registry] теги только хранит и отдаёт в [Entry.Has]; сам по ним не действует.
+[Registry] теги только хранит и отдаёт в [Entry.Tags]; сам по ним не действует.
 [TagReplaceable] — «запасной вариант»: caller при выборе одного ресурса из
 нескольких может предпочесть запись без этого тега и убрать остальные через
 [Registry.Remove] (интерпретирует [github.com/omcrgnt/sdi] при dedup).
@@ -24,8 +39,8 @@ API ([Default] и package-level funcs):
   - delete: [Remove]
 
 Devconv:
-  - [AddWithTags] с [TagReplaceable] — library defaults (import _ "…/use" or _ "github.com/omcrgnt/res/core/use")
-  - [Add] — явная регистрация caller'ом
+  - [AddWithTags] — library default configs in use init (Replaceable/Fixed)
+  - [Add] — ecfg.Register (explicit app configs)
   - enforcement — golangci profiles в github.com/omcrgnt/lint
 */
 package res
