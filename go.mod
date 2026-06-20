@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/omcrgnt/logger v0.1.1
-	github.com/omcrgnt/telemetry v0.1.0
+	github.com/omcrgnt/telemetry v0.2.0
 )
 
 require (
