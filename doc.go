@@ -1,7 +1,7 @@
 /*
 Package res — регистрация и хранение ресурсов приложения.
 
-Центральный тип — [Registry] ([Default], [New]): add, query, transform, remove.
+Центральный тип — [Registry] ([Global], [New]): add, query, transform, remove.
 Ресурс в pool представлен [Entry] (concrete type, value, опциональные [Tag]).
 Один type может иметь несколько [Entry]; [Registry.GetByType] и
 [Registry.GetByInterface] возвращают все совпадения (0..N),
@@ -12,7 +12,7 @@ Config-entry и resource-entry
 
 До [github.com/omcrgnt/builder].Build в pool лежат config-entry — значения,
 реализующие Build() (any, error) ([github.com/omcrgnt/builder].Builder).
-Их регистрируют library use init через [AddWithTags] (Replaceable/Fixed defaults)
+Их регистрируют library use init через [AddToGlobalWithTags] (Replaceable/Fixed defaults)
 и [github.com/omcrgnt/ecfg].Register из AppConfig ([Add], explicit, без tags).
 
 Build обходит registry, вызывает Build(), регистрирует resource-entry с
@@ -21,7 +21,7 @@ Build обходит registry, вызывает Build(), регистрируе�
 
 Pipeline:
 
-	ecfg.Parse → ecfg.Register(cfg, res) → builder.Build(res) → res.Transform → sdi.Resolve
+	ecfg.Parse → ecfg.Register(cfg, reg) → builder.Build(reg) → reg.Transform → sdi.Resolve
 
 [Tag] — метаданные на [Entry], задаются через [Registry.AddWithTags].
 [Registry] теги только хранит и отдаёт в [Entry.Tags]; сам по ним не действует.
@@ -32,15 +32,14 @@ Pipeline:
 [TagFixed] — «не подлежит подмене»: при 2+ entries одного dep type
 [sdi.Resolve] завершается ошибкой; запись не удаляется dedup policy.
 
-API ([Default] и package-level funcs):
-  - create: [Add], [AddWithTags]
-  - read: [WalkEntries], [GetByType], [GetByInterface], [GetOneByType], [GetOneByInterface]
-  - update: [Transform]
-  - delete: [Remove]
+API — методы [Registry] на [Global] или на явном reg из [New]:
 
-Devconv:
-  - [AddWithTags] — library default configs in use init (Replaceable/Fixed)
-  - [Add] — ecfg.Register (explicit app configs)
-  - enforcement — golangci profiles в github.com/omcrgnt/lint
+	reg.Add(v)
+	reg.WalkEntries(fn)
+	reg.Transform(...)
+
+Library use init регистрирует defaults через [AddToGlobalWithTags] в [Global].
+
+Subpackage [github.com/omcrgnt/res/restest] — optional test helpers over the same [Registry] API.
 */
 package res

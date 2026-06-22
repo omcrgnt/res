@@ -38,60 +38,23 @@ type Registry interface {
 	Remove(v any) error
 }
 
-// Default is the global [Registry].
-var Default Registry = New()
+var global Registry = New()
 
-// Instance is an alias for [Default].
-var Instance = Default
+// Global returns the shared application [Registry] populated by library use init
+// (via [AddToGlobalWithTags]) and used as the composition-root registry.
+func Global() Registry {
+	return global
+}
+
+// AddToGlobalWithTags is [Registry.AddWithTags] on [Global].
+// Call from */use init to install a library fallback config before app overrides (ecfg.Register).
+func AddToGlobalWithTags(v any, tags ...Tag) error {
+	return global.AddWithTags(v, tags...)
+}
 
 // New returns an empty [Registry].
 func New() Registry {
 	return &registry{}
-}
-
-// Add appends to [Default] via [Registry.Add].
-func Add[T any](v T) error {
-	return Default.Add(v)
-}
-
-// AddWithTags appends to [Default] via [Registry.AddWithTags].
-func AddWithTags[T any](v T, tags ...Tag) error {
-	return Default.AddWithTags(v, tags...)
-}
-
-// WalkEntries walks [Default] via [Registry.WalkEntries].
-func WalkEntries(fn func(Entry) bool) {
-	Default.WalkEntries(fn)
-}
-
-// GetByType queries [Default] via [Registry.GetByType].
-func GetByType(t reflect.Type) []Entry {
-	return Default.GetByType(t)
-}
-
-// GetByInterface queries [Default] via [Registry.GetByInterface].
-func GetByInterface(iface reflect.Type) []Entry {
-	return Default.GetByInterface(iface)
-}
-
-// GetOneByType returns the first match from [Default] via [Registry.GetOneByType].
-func GetOneByType(t reflect.Type) (any, error) {
-	return Default.GetOneByType(t)
-}
-
-// GetOneByInterface returns the first match from [Default] via [Registry.GetOneByInterface].
-func GetOneByInterface(iface reflect.Type) (any, error) {
-	return Default.GetOneByInterface(iface)
-}
-
-// Transform transforms all entries in [Default] via [Registry.Transform].
-func Transform(fns ...TransformFunc) error {
-	return Default.Transform(fns...)
-}
-
-// Remove deletes from [Default] via [Registry.Remove].
-func Remove(v any) error {
-	return Default.Remove(v)
 }
 
 type item struct {
@@ -218,12 +181,5 @@ func entryFromItem(it item) Entry {
 }
 
 func resetGlobalRegistry() {
-	Default = New()
-	Instance = Default
-}
-
-// ResetDefault replaces the global registry with an empty one.
-// Intended for tests that need an isolated [Default].
-func ResetDefault() {
-	resetGlobalRegistry()
+	global = New()
 }
