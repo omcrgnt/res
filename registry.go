@@ -11,6 +11,10 @@ import (
 // when no matching entry exists.
 var ErrNotFound = errors.New("resource not found")
 
+// ErrInvalidRegistrant is returned by [Registry.Add] and [Registry.AddWithTags]
+// when v is not exactly one of [NewResourceer] or [BuildConfiger].
+var ErrInvalidRegistrant = errors.New("res: registrant must implement NewResourceer or BuildConfiger, not both")
+
 // Registry stores application resources as [Entry] values.
 type Registry interface {
 	// Add registers a resource without tags.
@@ -41,15 +45,17 @@ type Registry interface {
 var global Registry = New()
 
 // Global returns the shared application [Registry] populated by library use init
-// (via [AddToGlobalWithTags]) and used as the composition-root registry.
+// (via [MustAddToGlobalWithTags]) and used as the composition-root registry.
 func Global() Registry {
 	return global
 }
 
-// AddToGlobalWithTags is [Registry.AddWithTags] on [Global].
-// Call from */use init to install a library fallback config before app overrides (ecfg.Register).
-func AddToGlobalWithTags(v any, tags ...Tag) error {
-	return global.AddWithTags(v, tags...)
+// MustAddToGlobalWithTags is [Registry.AddWithTags] on [Global]; panics on error.
+// Call from */use init to install a library fallback wire before app overrides.
+func MustAddToGlobalWithTags(v any, tags ...Tag) {
+	if err := global.AddWithTags(v, tags...); err != nil {
+		panic(fmt.Sprintf("res: MustAddToGlobalWithTags(%T): %v", v, err))
+	}
 }
 
 // New returns an empty [Registry].
@@ -83,6 +89,9 @@ func (r *registry) AddWithTags(v any, tags ...Tag) error {
 func (r *registry) add(v any, tags tagSet) error {
 	if v == nil {
 		return fmt.Errorf("cannot add nil resource")
+	}
+	if err := validateRegistrant(v); err != nil {
+		return err
 	}
 
 	r.mu.Lock()

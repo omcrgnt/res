@@ -12,7 +12,7 @@ Config-entry и resource-entry
 
 До [github.com/omcrgnt/builder].Build в pool лежат config-entry — значения,
 реализующие Build() (any, error) ([github.com/omcrgnt/builder].Builder).
-Их регистрируют library use init через [AddToGlobalWithTags] (Replaceable/Fixed defaults)
+Их регистрируют library use init через [MustAddToGlobalWithTags] (Replaceable/Fixed defaults)
 и [github.com/omcrgnt/ecfg].Register из AppConfig ([Add], explicit, без tags).
 
 Build обходит registry, вызывает Build(), регистрирует resource-entry с
@@ -34,11 +34,11 @@ Pipeline:
 
 API — методы [Registry] на [Global] или на явном reg из [New]:
 
-	reg.Add(v)
+	reg.Add(v) — только [NewResourceer] или [BuildConfiger]
 	reg.WalkEntries(fn)
 	reg.Transform(...)
 
-Library use init регистрирует defaults через [AddToGlobalWithTags] в [Global].
+Library use init регистрирует defaults через [MustAddToGlobalWithTags] в [Global].
 
 Subpackage [github.com/omcrgnt/res/restest] — optional test helpers over the same [Registry] API.
 */

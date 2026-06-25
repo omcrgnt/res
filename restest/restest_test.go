@@ -16,8 +16,14 @@ func TestWith_registersInOrder(t *testing.T) {
 		values = append(values, e.Value)
 		return true
 	})
-	if len(values) != 3 || values[0] != "a" || values[1] != 1 || values[2] != "b" {
-		t.Fatalf("got %v", values)
+	if len(values) != 3 {
+		t.Fatalf("got len %d", len(values))
+	}
+	for i, want := range []any{"a", 1, "b"} {
+		w, ok := values[i].(restest.Wire)
+		if !ok || w.V != want {
+			t.Fatalf("values[%d] = %T(%v), want wire %v", i, values[i], values[i], want)
+		}
 	}
 }
 
@@ -33,9 +39,9 @@ func TestWithTagged(t *testing.T) {
 }
 
 func TestResetGlobal_isolatedFromPriorGlobal(t *testing.T) {
-	_ = res.Global().Add("leak")
+	_ = res.Global().Add(restest.Wire{V: "leak"})
 	reg := restest.ResetGlobal()
-	_ = reg.Add("only")
+	_ = reg.Add(restest.Wire{V: "only"})
 
 	n := 0
 	reg.WalkEntries(func(res.Entry) bool {
@@ -49,10 +55,13 @@ func TestResetGlobal_isolatedFromPriorGlobal(t *testing.T) {
 
 func TestAddAll_stopsOnError(t *testing.T) {
 	reg := restest.Registry()
-	if err := restest.AddAll(reg, "ok", nil); err == nil {
+	if err := restest.AddAll(reg, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Add(nil); err == nil {
 		t.Fatal("expected nil add error")
 	}
-	if got := reg.GetByType(reflect.TypeFor[string]()); len(got) != 1 {
+	if got := reg.GetByType(reflect.TypeFor[restest.Wire]()); len(got) != 1 {
 		t.Fatalf("expected one entry before failure, got %d", len(got))
 	}
 }

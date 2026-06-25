@@ -8,21 +8,20 @@ import (
 
 func TestRegistry_Add(t *testing.T) {
 	r := New().(*registry)
-	val := "hello"
 
-	if err := r.Add(val); err != nil {
+	if err := r.Add(stubNew{}); err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
 
-	entries := r.GetByType(reflect.TypeFor[string]())
-	if len(entries) != 1 || entries[0].Value != "hello" {
+	entries := r.GetByType(reflect.TypeFor[stubNew]())
+	if len(entries) != 1 {
 		t.Errorf("GetByType failed: got %v", entries)
 	}
 
-	if err := r.Add("world"); err != nil {
+	if err := r.Add(stubNew{}); err != nil {
 		t.Fatal("duplicate Add should succeed")
 	}
-	if len(r.GetByType(reflect.TypeFor[string]())) != 2 {
+	if len(r.GetByType(reflect.TypeFor[stubNew]())) != 2 {
 		t.Error("expected 2 entries for same type")
 	}
 }
@@ -39,7 +38,7 @@ func TestAdd_nil(t *testing.T) {
 
 func TestAddWithTags_requiresTag(t *testing.T) {
 	resetGlobalRegistry()
-	if err := Global().AddWithTags("x"); err == nil {
+	if err := Global().AddWithTags(stubNew{}); err == nil {
 		t.Fatal("expected error when no tags")
 	}
 }
@@ -47,10 +46,10 @@ func TestAddWithTags_requiresTag(t *testing.T) {
 func TestAddWithTags(t *testing.T) {
 	resetGlobalRegistry()
 
-	if err := Global().AddWithTags("default", TagReplaceable); err != nil {
+	if err := Global().AddWithTags(stubNew{}, TagReplaceable); err != nil {
 		t.Fatal(err)
 	}
-	if err := Global().AddWithTags("again", TagReplaceable); err != nil {
+	if err := Global().AddWithTags(stubNew{}, TagReplaceable); err != nil {
 		t.Fatal("duplicate AddWithTags should succeed")
 	}
 
@@ -66,10 +65,10 @@ func TestAddWithTags(t *testing.T) {
 
 func TestAddWithTags_dedupesTags(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().AddWithTags("x", TagReplaceable, TagReplaceable)
+	_ = Global().AddWithTags(stubNew{}, TagReplaceable, TagReplaceable)
 
-	entries := Global().GetByType(reflect.TypeFor[string]())
-	if len(entries[0].Tags()) != 1 {
+	entries := Global().GetByType(reflect.TypeFor[stubNew]())
+	if len(entries) == 0 || len(entries[0].Tags()) != 1 {
 		t.Fatalf("expected 1 unique tag, got %v", entries[0].Tags())
 	}
 }
@@ -79,10 +78,14 @@ func TestAdd_and_AddWithTags_sameType(t *testing.T) {
 
 	type widget struct{ n int }
 
-	if err := Global().AddWithTags(&widget{n: 1}, TagReplaceable); err != nil {
+	w1 := wireValue{v: &widget{n: 1}}
+	if err := Global().AddWithTags(w1, TagReplaceable); err != nil {
 		t.Fatal(err)
 	}
-	if err := Global().Add(&widget{n: 2}); err != nil {
+	if err := Global().(*registry).replaceValue(w1, &widget{n: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := addBuilt(Global().(*registry), &widget{n: 2}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,12 +101,12 @@ func TestAdd_and_AddWithTags_sameType(t *testing.T) {
 func TestGlobal_Add(t *testing.T) {
 	resetGlobalRegistry()
 
-	if err := Global().Add("via-default"); err != nil {
+	if err := addWire(Global(), "via-default"); err != nil {
 		t.Fatalf("Global().Add failed: %v", err)
 	}
 
-	entries := Global().GetByType(reflect.TypeFor[string]())
-	if len(entries) != 1 || entries[0].Value != "via-default" {
+	entries := Global().GetByType(reflect.TypeFor[wireValue]())
+	if len(entries) != 1 {
 		t.Errorf("unexpected entries: %v", entries)
 	}
 }
@@ -111,25 +114,25 @@ func TestGlobal_Add(t *testing.T) {
 func TestRemove(t *testing.T) {
 	resetGlobalRegistry()
 
-	s := "remove-me"
-	if err := Global().Add(s); err != nil {
+	w := wireValue{v: "remove-me"}
+	if err := Global().Add(w); err != nil {
 		t.Fatal(err)
 	}
-	if err := Global().Remove("other"); err == nil {
+	if err := Global().Remove(wireValue{v: "other"}); err == nil {
 		t.Fatal("expected not found")
 	}
-	if err := Global().Remove(s); err != nil {
+	if err := Global().Remove(w); err != nil {
 		t.Fatal(err)
 	}
-	if len(Global().GetByType(reflect.TypeFor[string]())) != 0 {
+	if len(Global().GetByType(reflect.TypeFor[wireValue]())) != 0 {
 		t.Fatal("expected removed")
 	}
 }
 
 func TestGlobal_WalkEntries(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().Add("a")
-	_ = Global().Add(2)
+	_ = Global().Add(stubNew{})
+	_ = Global().Add(stubNew{})
 
 	var seen []any
 	Global().WalkEntries(func(e Entry) bool {
@@ -144,8 +147,8 @@ func TestGlobal_WalkEntries(t *testing.T) {
 
 func TestRegistry_WalkEntries(t *testing.T) {
 	r := New().(*registry)
-	_ = r.Add(10)
-	_ = r.Add("string")
+	_ = r.Add(stubNew{})
+	_ = r.Add(stubBuild{})
 
 	count := 0
 	r.WalkEntries(func(Entry) bool {
@@ -160,30 +163,33 @@ func TestRegistry_WalkEntries(t *testing.T) {
 
 func TestRegistry_WalkEntries_stopsOnFalse(t *testing.T) {
 	r := New().(*registry)
-	_ = r.Add("one")
-	_ = r.Add(2)
-	_ = r.Add(true)
+	first := stubNew{}
+	mid := stubBuild{}
+	last := stubNew{}
+	_ = r.Add(first)
+	_ = r.Add(mid)
+	_ = r.Add(last)
 
 	var seen []any
 	r.WalkEntries(func(e Entry) bool {
 		seen = append(seen, e.Value)
-		return e.Value != 2
+		return e.Value != mid
 	})
 
 	if len(seen) != 2 {
 		t.Fatalf("WalkEntries must stop after fn returns false, got %v", seen)
 	}
-	if seen[0] != "one" || seen[1] != 2 {
+	if seen[0] != first || seen[1] != mid {
 		t.Fatalf("unexpected visit order: %v", seen)
 	}
 }
 
 func TestGlobal_shared(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().Add(42)
+	_ = Global().Add(stubNew{})
 
-	entries := Global().GetByType(reflect.TypeFor[int]())
-	if len(entries) != 1 || entries[0].Value != 42 {
+	entries := Global().GetByType(reflect.TypeFor[stubNew]())
+	if len(entries) != 1 {
 		t.Fatalf("Global failed: got %v", entries)
 	}
 }
@@ -208,7 +214,7 @@ func TestGetByType(t *testing.T) {
 	resetGlobalRegistry()
 
 	sq := &Square{Side: 10}
-	_ = Global().Add(sq)
+	if err := addBuilt(Global().(*registry), sq); err != nil { t.Fatal(err) }
 
 	entries := Global().GetByType(reflect.TypeFor[*Square]())
 	if len(entries) != 1 {
@@ -226,8 +232,8 @@ func TestGetOneByType(t *testing.T) {
 
 	first := &Square{Side: 1}
 	second := &Square{Side: 2}
-	_ = Global().Add(first)
-	_ = Global().Add(second)
+	if err := addBuilt(Global().(*registry), first); err != nil { t.Fatal(err) }
+	if err := addBuilt(Global().(*registry), second); err != nil { t.Fatal(err) }
 
 	got, err := Global().GetOneByType(reflect.TypeFor[*Square]())
 	if err != nil {
@@ -260,8 +266,14 @@ func TestGetOneByInterface(t *testing.T) {
 
 	first := stdoutSink{}
 	second := fileSink{}
-	_ = Global().AddWithTags(first, TagReplaceable)
-	_ = Global().Add(second)
+	w := wireValue{v: first}
+	_ = Global().AddWithTags(w, TagReplaceable)
+	if err := Global().(*registry).replaceValue(w, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := addBuilt(Global().(*registry), second); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := Global().GetOneByInterface(reflect.TypeFor[writePort]())
 	if err != nil {
@@ -280,8 +292,10 @@ func TestGetOneByInterface(t *testing.T) {
 func TestGetByInterface(t *testing.T) {
 	resetGlobalRegistry()
 
-	_ = Global().AddWithTags(stdoutSink{}, TagReplaceable)
-	_ = Global().Add(fileSink{})
+	if err := addBuilt(Global().(*registry), stdoutSink{}); err != nil { t.Fatal(err) }
+	w2 := wireValue{v: fileSink{}}
+	_ = Global().AddWithTags(w2, TagReplaceable)
+	if err := Global().(*registry).replaceValue(w2, fileSink{}); err != nil { t.Fatal(err) }
 
 	entries := Global().GetByInterface(reflect.TypeFor[writePort]())
 	if len(entries) != 2 {
@@ -289,7 +303,7 @@ func TestGetByInterface(t *testing.T) {
 	}
 
 	shapes := Global().GetByInterface(reflect.TypeFor[Shaper]())
-	_ = Global().Add(&Square{Side: 1})
+	if err := addBuilt(Global().(*registry), &Square{Side: 1}); err != nil { t.Fatal(err) }
 	shapes = Global().GetByInterface(reflect.TypeFor[Shaper]())
 	if len(shapes) != 1 {
 		t.Errorf("GetByInterface[Shaper] expected 1, got %d", len(shapes))
@@ -298,7 +312,7 @@ func TestGetByInterface(t *testing.T) {
 
 func TestTransform_noop(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().Add(&Square{Side: 5})
+	if err := addBuilt(Global().(*registry), &Square{Side: 5}); err != nil { t.Fatal(err) }
 
 	err := Global().Transform(func(r any) any { return r })
 	if err != nil {
@@ -313,7 +327,8 @@ func TestTransform_noop(t *testing.T) {
 
 func TestTransform_preservesTags(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().AddWithTags(&Square{Side: 1}, TagReplaceable)
+	w := wireValue{v: &Square{Side: 1}}
+	_ = Global().AddWithTags(w, TagReplaceable)
 
 	if err := Global().Transform(func(r any) any {
 		if sq, ok := r.(*Square); ok {
@@ -336,7 +351,8 @@ func TestTransform_preservesTags(t *testing.T) {
 
 func TestAddWithTags_fixed(t *testing.T) {
 	resetGlobalRegistry()
-	if err := Global().AddWithTags(&Square{Side: 1}, TagFixed); err != nil {
+	w := wireValue{v: &Square{Side: 1}}
+	if err := Global().AddWithTags(w, TagFixed); err != nil {
 		t.Fatal(err)
 	}
 
@@ -352,7 +368,8 @@ func TestAddWithTags_fixed(t *testing.T) {
 
 func TestTransform_preservesFixedTag(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().AddWithTags(&Square{Side: 1}, TagFixed)
+	w := wireValue{v: &Square{Side: 1}}
+	_ = Global().AddWithTags(w, TagFixed)
 
 	if err := Global().Transform(func(r any) any {
 		if sq, ok := r.(*Square); ok {
@@ -375,7 +392,7 @@ func TestTransform_preservesFixedTag(t *testing.T) {
 
 func TestTransform_empty(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().Add(&Square{Side: 3})
+	if err := addBuilt(Global().(*registry), &Square{Side: 3}); err != nil { t.Fatal(err) }
 
 	if err := Global().Transform(); err != nil {
 		t.Fatalf("empty Transform failed: %v", err)
@@ -389,7 +406,7 @@ func TestTransform_empty(t *testing.T) {
 
 func TestTransform_updatesSliceInPlace(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().Add(&Square{Side: 5})
+	if err := addBuilt(Global().(*registry), &Square{Side: 5}); err != nil { t.Fatal(err) }
 
 	before := Global().GetByType(reflect.TypeFor[*Square]())[0].Value.(*Square)
 
@@ -414,7 +431,7 @@ func TestTransform_updatesSliceInPlace(t *testing.T) {
 
 func TestTransform_typeChange(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().Add(&Square{Side: 10})
+	if err := addBuilt(Global().(*registry), &Square{Side: 10}); err != nil { t.Fatal(err) }
 
 	err := Global().Transform(func(r any) any {
 		if sq, ok := r.(*Square); ok {
@@ -444,8 +461,8 @@ func (c *Circle) Area() int { return c.Radius * c.Radius }
 
 func TestTransform_duplicateType(t *testing.T) {
 	resetGlobalRegistry()
-	_ = Global().Add(&Square{Side: 1})
-	_ = Global().Add(&Circle{Radius: 2})
+	if err := addBuilt(Global().(*registry), &Square{Side: 1}); err != nil { t.Fatal(err) }
+	if err := addBuilt(Global().(*registry), &Circle{Radius: 2}); err != nil { t.Fatal(err) }
 
 	err := Global().Transform(func(r any) any {
 		switch v := r.(type) {

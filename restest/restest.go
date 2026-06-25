@@ -2,6 +2,12 @@ package restest
 
 import "github.com/omcrgnt/res"
 
+// wire registers arbitrary v as a NewResourceer for test setup.
+type Wire struct{ V any }
+
+func (w Wire) NewResource() (any, error) { return w.V, nil }
+
+
 // Registry returns a new empty registry ([res.New]).
 func Registry() res.Registry {
 	return res.New()
@@ -10,21 +16,23 @@ func Registry() res.Registry {
 // With returns a registry with values registered in order via [res.Registry.Add].
 func With(values ...any) res.Registry {
 	reg := Registry()
-	Must(AddAll(reg, values...))
+	for _, v := range values {
+		Must(reg.Add(Wire{V: v}))
+	}
 	return reg
 }
 
 // WithTagged returns a registry containing one value registered via [res.Registry.AddWithTags].
 func WithTagged(v any, tags ...res.Tag) res.Registry {
 	reg := Registry()
-	Must(reg.AddWithTags(v, tags...))
+	Must(reg.AddWithTags(Wire{V: v}, tags...))
 	return reg
 }
 
 // AddAll registers values in order. Stops and returns the first error.
 func AddAll(reg res.Registry, values ...any) error {
 	for _, v := range values {
-		if err := reg.Add(v); err != nil {
+		if err := reg.Add(Wire{V: v}); err != nil {
 			return err
 		}
 	}
