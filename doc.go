@@ -24,13 +24,13 @@ Pipeline:
 	ecfg.Parse → ecfg.Register(cfg, reg) → builder.Build(reg) → reg.Transform → sdi.Resolve
 
 [Tag] — метаданные на [Entry], задаются через [Registry.AddWithTags].
-[Registry] теги только хранит и отдаёт в [Entry.Tags]; сам по ним не действует.
-[TagReplaceable] — «запасной вариант»: caller при выборе одного ресурса из
-нескольких может предпочесть запись без этого тега и убрать остальные через
-[Registry.Remove] (интерпретирует [github.com/omcrgnt/sdi] при dedup).
+[Registry] теги хранит и отдаёт в [Entry]; интерпретация при записи — в [unique].
+[TagRegular] — обычный app-ресурс; [TagReplaceable] — library default, можно вытеснить;
+[TagFixed] — не подлежит подмене.
 
-[TagFixed] — «не подлежит подмене»: при 2+ entries одного dep type
-[sdi.Resolve] завершается ошибкой; запись не удаляется dedup policy.
+Type-unique registry (composition root): [github.com/omcrgnt/res/unique].
+
+[Global] и [AddToGlobalWithTags] — legacy; prefer [unique.Global] и [unique.Registry.AddReplaceable].
 
 API — методы [Registry] на [Global] или на явном reg из [New]:
 
@@ -40,6 +40,7 @@ API — методы [Registry] на [Global] или на явном reg из [N
 
 Library use init регистрирует defaults через [AddToGlobalWithTags] в [Global].
 
+Subpackage [github.com/omcrgnt/res/unique] — type-unique registry for app composition root.
 Subpackage [github.com/omcrgnt/res/restest] — optional test helpers over the same [Registry] API.
 */
 package res

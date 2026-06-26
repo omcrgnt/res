@@ -6,6 +6,9 @@ type Tag struct {
 	name string
 }
 
+// TagRegular marks a normal application resource (not a library default).
+var TagRegular = Tag{name: "regular"}
+
 // TagReplaceable marks a resource as a fallback candidate when a caller
 // chooses one of several matching entries.
 var TagReplaceable = Tag{name: "replaceable"}
@@ -18,6 +21,11 @@ var TagFixed = Tag{name: "fixed"}
 func (e Entry) Has(tag Tag) bool {
 	_, ok := e.tags[tag]
 	return ok
+}
+
+// Regular reports whether e has [TagRegular].
+func (e Entry) Regular() bool {
+	return e.Has(TagRegular)
 }
 
 // Replaceable reports whether e has [TagReplaceable].
