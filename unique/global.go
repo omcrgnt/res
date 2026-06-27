@@ -16,14 +16,24 @@ func New() *Registry {
 
 // MustAddReplaceable registers v on [Global] with [res.TagReplaceable]; panics on error.
 func MustAddReplaceable(v any) {
-	if err := Global().AddReplaceable(v); err != nil {
-		panic(err)
-	}
+	Global().MustAddReplaceable(v)
 }
 
 // MustAddFixed registers v on [Global] with [res.TagFixed]; panics on error.
 func MustAddFixed(v any) {
-	if err := Global().AddFixed(v); err != nil {
+	Global().MustAddFixed(v)
+}
+
+// MustAddReplaceable registers v with [res.TagReplaceable]; panics on error.
+func (r *Registry) MustAddReplaceable(v any) {
+	if err := r.addReplaceable(v); err != nil {
+		panic(err)
+	}
+}
+
+// MustAddFixed registers v with [res.TagFixed]; panics on error.
+func (r *Registry) MustAddFixed(v any) {
+	if err := r.addFixed(v); err != nil {
 		panic(err)
 	}
 }

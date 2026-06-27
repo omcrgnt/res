@@ -17,39 +17,6 @@ var TagReplaceable = Tag{name: "replaceable"}
 // If another entry matches the same dependency type, sdi.Resolve fails.
 var TagFixed = Tag{name: "fixed"}
 
-// Has reports whether e has tag.
-func (e Entry) Has(tag Tag) bool {
-	_, ok := e.tags[tag]
-	return ok
-}
-
-// Regular reports whether e has [TagRegular].
-func (e Entry) Regular() bool {
-	return e.Has(TagRegular)
-}
-
-// Replaceable reports whether e has [TagReplaceable].
-func (e Entry) Replaceable() bool {
-	return e.Has(TagReplaceable)
-}
-
-// Fixed reports whether e has [TagFixed].
-func (e Entry) Fixed() bool {
-	return e.Has(TagFixed)
-}
-
-// Tags returns a copy of tags attached to e.
-func (e Entry) Tags() []Tag {
-	if len(e.tags) == 0 {
-		return nil
-	}
-	out := make([]Tag, 0, len(e.tags))
-	for tag := range e.tags {
-		out = append(out, tag)
-	}
-	return out
-}
-
 type tagSet map[Tag]struct{}
 
 func newTagSet(tags ...Tag) tagSet {

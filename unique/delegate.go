@@ -10,15 +10,27 @@ import (
 var errNilValue = fmt.Errorf("unique: nil value")
 
 func (r *Registry) WalkEntries(fn func(res.Entry) bool) {
-	r.reg.WalkEntries(fn)
+	r.reg.WalkEntries(func(e res.Entry) bool {
+		return fn(wrapEntry(r, e))
+	})
 }
 
 func (r *Registry) GetByType(t reflect.Type) []res.Entry {
-	return r.reg.GetByType(t)
+	entries := r.reg.GetByType(t)
+	out := make([]res.Entry, len(entries))
+	for i, e := range entries {
+		out[i] = wrapEntry(r, e)
+	}
+	return out
 }
 
 func (r *Registry) GetByInterface(iface reflect.Type) []res.Entry {
-	return r.reg.GetByInterface(iface)
+	entries := r.reg.GetByInterface(iface)
+	out := make([]res.Entry, len(entries))
+	for i, e := range entries {
+		out[i] = wrapEntry(r, e)
+	}
+	return out
 }
 
 func (r *Registry) GetOneByType(t reflect.Type) (any, error) {

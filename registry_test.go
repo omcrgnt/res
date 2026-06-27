@@ -15,7 +15,7 @@ func TestRegistry_Add(t *testing.T) {
 	}
 
 	entries := r.GetByType(reflect.TypeFor[string]())
-	if len(entries) != 1 || entries[0].Value != "hello" {
+	if len(entries) != 1 || entries[0].Value() != "hello" {
 		t.Errorf("GetByType failed: got %v", entries)
 	}
 
@@ -103,7 +103,7 @@ func TestGlobal_Add(t *testing.T) {
 	}
 
 	entries := Global().GetByType(reflect.TypeFor[string]())
-	if len(entries) != 1 || entries[0].Value != "via-default" {
+	if len(entries) != 1 || entries[0].Value() != "via-default" {
 		t.Errorf("unexpected entries: %v", entries)
 	}
 }
@@ -133,7 +133,7 @@ func TestGlobal_WalkEntries(t *testing.T) {
 
 	var seen []any
 	Global().WalkEntries(func(e Entry) bool {
-		seen = append(seen, e.Value)
+		seen = append(seen, e.Value())
 		return true
 	})
 
@@ -166,8 +166,8 @@ func TestRegistry_WalkEntries_stopsOnFalse(t *testing.T) {
 
 	var seen []any
 	r.WalkEntries(func(e Entry) bool {
-		seen = append(seen, e.Value)
-		return e.Value != 2
+		seen = append(seen, e.Value())
+		return e.Value() != 2
 	})
 
 	if len(seen) != 2 {
@@ -183,7 +183,7 @@ func TestGlobal_shared(t *testing.T) {
 	_ = Global().Add(42)
 
 	entries := Global().GetByType(reflect.TypeFor[int]())
-	if len(entries) != 1 || entries[0].Value != 42 {
+	if len(entries) != 1 || entries[0].Value() != 42 {
 		t.Fatalf("Global failed: got %v", entries)
 	}
 }
@@ -306,7 +306,7 @@ func TestTransform_noop(t *testing.T) {
 	}
 
 	entries := Global().GetByType(reflect.TypeFor[*Square]())
-	if len(entries) != 1 || entries[0].Value.(*Square).Side != 5 {
+	if len(entries) != 1 || entries[0].Value().(*Square).Side != 5 {
 		t.Errorf("expected square after noop transform, got %v", entries)
 	}
 }
@@ -382,7 +382,7 @@ func TestTransform_empty(t *testing.T) {
 	}
 
 	entries := Global().GetByType(reflect.TypeFor[*Square]())
-	if len(entries) != 1 || entries[0].Value.(*Square).Side != 3 {
+	if len(entries) != 1 || entries[0].Value().(*Square).Side != 3 {
 		t.Errorf("empty Transform must not change resources, got %v", entries)
 	}
 }
@@ -391,7 +391,7 @@ func TestTransform_updatesSliceInPlace(t *testing.T) {
 	resetGlobalRegistry()
 	_ = Global().Add(&Square{Side: 5})
 
-	before := Global().GetByType(reflect.TypeFor[*Square]())[0].Value.(*Square)
+	before := Global().GetByType(reflect.TypeFor[*Square]())[0].Value().(*Square)
 
 	err := Global().Transform(func(r any) any {
 		if sq, ok := r.(*Square); ok {
@@ -403,7 +403,7 @@ func TestTransform_updatesSliceInPlace(t *testing.T) {
 		t.Fatalf("Transform failed: %v", err)
 	}
 
-	after := Global().GetByType(reflect.TypeFor[*Square]())[0].Value.(*Square)
+	after := Global().GetByType(reflect.TypeFor[*Square]())[0].Value().(*Square)
 	if after == before {
 		t.Fatal("registry must hold transformed resource instance")
 	}

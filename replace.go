@@ -7,7 +7,7 @@ import (
 
 // ReplaceAtType replaces the first entry whose type equals reflect.TypeOf(v),
 // preserving registration order. If none exists, appends like Add or AddWithTags.
-// Storage-only: does not interpret tags.
+// Storage-only: does not interpret tags. Custom tags on the replaced entry are preserved.
 func ReplaceAtType(r Registry, v any, tags ...Tag) error {
 	if v == nil {
 		return fmt.Errorf("cannot replace nil resource")
@@ -30,7 +30,11 @@ func ReplaceAtType(r Registry, v any, tags ...Tag) error {
 
 	for i, it := range reg.items {
 		if reflect.TypeOf(it.value) == typ {
-			reg.items[i] = item{value: v, tags: ts}
+			reg.items[i] = item{
+				value:      v,
+				tags:       ts,
+				customTags: cloneCustomTags(it.customTags),
+			}
 			return nil
 		}
 	}
