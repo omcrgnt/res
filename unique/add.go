@@ -1,6 +1,7 @@
 package unique
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/omcrgnt/res"
@@ -34,8 +35,42 @@ func (r *Registry) Add(v any) error {
 	}
 }
 
-// AddReplaceable registers v with [res.TagReplaceable].
-func (r *Registry) AddReplaceable(v any) error {
+// AddWithCustomTag registers v with [res.TagRegular] and one custom tag key/value.
+func (r *Registry) AddWithCustomTag(v any, key string, val any) error {
+	if v == nil {
+		return errNilValue
+	}
+	if key == "" {
+		return fmt.Errorf("unique: empty custom tag key")
+	}
+	if val == nil {
+		return fmt.Errorf("unique: nil custom tag value")
+	}
+
+	typ := reflect.TypeOf(v)
+	customTags := map[string]any{key: val}
+	entries := r.reg.GetByType(typ)
+	switch len(entries) {
+	case 0:
+		return res.AddWithTagsAndCustomTags(r.reg, v, customTags, res.TagRegular)
+	case 1:
+		e := entries[0]
+		switch {
+		case e.Replaceable():
+			return res.ReplaceAtTypeWithCustomTags(r.reg, v, customTags, res.TagRegular)
+		case isRegular(e):
+			return ErrRegularExists
+		case e.Fixed():
+			return ErrFixed
+		default:
+			return ErrRegularExists
+		}
+	default:
+		return ErrDuplicateType
+	}
+}
+
+func (r *Registry) addReplaceable(v any) error {
 	if v == nil {
 		return errNilValue
 	}
@@ -60,8 +95,7 @@ func (r *Registry) AddReplaceable(v any) error {
 	}
 }
 
-// AddFixed registers v with [res.TagFixed] when no entry exists for the type.
-func (r *Registry) AddFixed(v any) error {
+func (r *Registry) addFixed(v any) error {
 	if v == nil {
 		return errNilValue
 	}

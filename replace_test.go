@@ -40,7 +40,7 @@ func TestReplaceAtType_replacesInPlace(t *testing.T) {
 
 	var order []any
 	reg.WalkEntries(func(e Entry) bool {
-		order = append(order, e.Value)
+		order = append(order, e.Value())
 		return true
 	})
 	if len(order) != 2 || order[0] != second || order[1] != other {
@@ -51,7 +51,7 @@ func TestReplaceAtType_replacesInPlace(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 widget entries, got %d", len(entries))
 	}
-	if entries[0].Value != second || !entries[0].Regular() {
+	if entries[0].Value() != second || !entries[0].Regular() {
 		t.Fatalf("first widget entry = %+v", entries[0])
 	}
 }

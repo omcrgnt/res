@@ -13,7 +13,7 @@ func TestWith_registersInOrder(t *testing.T) {
 
 	var values []any
 	reg.WalkEntries(func(e res.Entry) bool {
-		values = append(values, e.Value)
+		values = append(values, e.Value())
 		return true
 	})
 	if len(values) != 3 || values[0] != "a" || values[1] != 1 || values[2] != "b" {

@@ -14,7 +14,7 @@ func TestMustAddReplaceable(t *testing.T) {
 	MustAddReplaceable(w)
 
 	entries := g.GetByType(reflect.TypeFor[*testWidget]())
-	if len(entries) != 1 || !entries[0].Replaceable() || entries[0].Value != w {
+	if len(entries) != 1 || !entries[0].Replaceable() || entries[0].Value() != w {
 		t.Fatalf("entry = %+v", entries)
 	}
 }
@@ -26,7 +26,7 @@ func TestMustAddFixed(t *testing.T) {
 	MustAddFixed(w)
 
 	entries := g.GetByType(reflect.TypeFor[*fixedWidget]())
-	if len(entries) != 1 || !entries[0].Fixed() || entries[0].Value != w {
+	if len(entries) != 1 || !entries[0].Fixed() || entries[0].Value() != w {
 		t.Fatalf("entry = %+v", entries)
 	}
 }

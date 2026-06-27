@@ -20,15 +20,13 @@ type Registry interface {
 
 	// WalkEntries visits entries in registration order.
 	WalkEntries(fn func(Entry) bool)
-	// GetByType returns entries whose [Entry.Type] equals t.
+	// GetByType returns entries whose concrete type equals t.
 	GetByType(t reflect.Type) []Entry
-	// GetByInterface returns entries whose [Entry.Type] implements iface.
+	// GetByInterface returns entries whose concrete type implements iface.
 	GetByInterface(iface reflect.Type) []Entry
 	// GetOneByType returns the first [Entry.Value] for t in registration order.
-	// See also [Registry.GetByType].
 	GetOneByType(t reflect.Type) (any, error)
 	// GetOneByInterface returns the first matching [Entry.Value] in registration order.
-	// See also [Registry.GetByInterface].
 	GetOneByInterface(iface reflect.Type) (any, error)
 
 	// Transform applies [TransformFunc] to every stored resource in place.
@@ -47,7 +45,6 @@ func Global() Registry {
 }
 
 // AddToGlobalWithTags is [Registry.AddWithTags] on [Global].
-// Call from */use init to install a library fallback config before app overrides (ecfg.Register).
 func AddToGlobalWithTags(v any, tags ...Tag) error {
 	return global.AddWithTags(v, tags...)
 }
@@ -58,8 +55,9 @@ func New() Registry {
 }
 
 type item struct {
-	value any
-	tags  tagSet
+	value      any
+	tags       tagSet
+	customTags map[string]any
 }
 
 type registry struct {
@@ -70,17 +68,17 @@ type registry struct {
 var _ Registry = (*registry)(nil)
 
 func (r *registry) Add(v any) error {
-	return r.add(v, nil)
+	return r.add(v, nil, nil)
 }
 
 func (r *registry) AddWithTags(v any, tags ...Tag) error {
 	if len(tags) == 0 {
 		return fmt.Errorf("at least one tag required")
 	}
-	return r.add(v, newTagSet(tags...))
+	return r.add(v, newTagSet(tags...), nil)
 }
 
-func (r *registry) add(v any, tags tagSet) error {
+func (r *registry) add(v any, tags tagSet, customTags map[string]any) error {
 	if v == nil {
 		return fmt.Errorf("cannot add nil resource")
 	}
@@ -88,7 +86,11 @@ func (r *registry) add(v any, tags tagSet) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.items = append(r.items, item{value: v, tags: tags})
+	r.items = append(r.items, item{
+		value:      v,
+		tags:       tags,
+		customTags: cloneCustomTags(customTags),
+	})
 	return nil
 }
 
@@ -111,10 +113,14 @@ func (r *registry) Remove(v any) error {
 
 func (r *registry) WalkEntries(fn func(Entry) bool) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
+	refs := make([]Entry, 0, len(r.items))
 	for _, it := range r.items {
-		if !fn(entryFromItem(it)) {
+		refs = append(refs, newEntryRef(r, it.value))
+	}
+	r.mu.RUnlock()
+
+	for _, ref := range refs {
+		if !fn(ref) {
 			break
 		}
 	}
@@ -126,9 +132,8 @@ func (r *registry) GetByType(t reflect.Type) []Entry {
 
 	var out []Entry
 	for _, it := range r.items {
-		e := entryFromItem(it)
-		if e.Type == t {
-			out = append(out, e)
+		if reflect.TypeOf(it.value) == t {
+			out = append(out, newEntryRef(r, it.value))
 		}
 	}
 	return out
@@ -140,9 +145,8 @@ func (r *registry) GetByInterface(iface reflect.Type) []Entry {
 
 	var out []Entry
 	for _, it := range r.items {
-		e := entryFromItem(it)
-		if e.Type.Implements(iface) {
-			out = append(out, e)
+		if reflect.TypeOf(it.value).Implements(iface) {
+			out = append(out, newEntryRef(r, it.value))
 		}
 	}
 	return out
@@ -170,14 +174,6 @@ func (r *registry) GetOneByInterface(iface reflect.Type) (any, error) {
 		}
 	}
 	return nil, ErrNotFound
-}
-
-func entryFromItem(it item) Entry {
-	return Entry{
-		Type:  reflect.TypeOf(it.value),
-		Value: it.value,
-		tags:  it.tags,
-	}
 }
 
 func resetGlobalRegistry() {

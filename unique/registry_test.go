@@ -19,7 +19,7 @@ func TestAdd_empty(t *testing.T) {
 	}
 
 	entries := reg.GetByType(reflect.TypeFor[*testWidget]())
-	if len(entries) != 1 || !entries[0].Regular() || entries[0].Value != w {
+	if len(entries) != 1 || !entries[0].Regular() || entries[0].Value() != w {
 		t.Fatalf("entry = %+v", entries)
 	}
 }
@@ -29,7 +29,7 @@ func TestAdd_overReplaceable(t *testing.T) {
 	def := &testWidget{n: 1}
 	app := &testWidget{n: 2}
 
-	if err := reg.AddReplaceable(def); err != nil {
+	if err := reg.addReplaceable(def); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.Add(app); err != nil {
@@ -37,14 +37,14 @@ func TestAdd_overReplaceable(t *testing.T) {
 	}
 
 	entries := reg.GetByType(reflect.TypeFor[*testWidget]())
-	if len(entries) != 1 || !entries[0].Regular() || entries[0].Value != app {
+	if len(entries) != 1 || !entries[0].Regular() || entries[0].Value() != app {
 		t.Fatalf("entry = %+v", entries)
 	}
 }
 
 func TestAdd_fixedConflict(t *testing.T) {
 	reg := New()
-	if err := reg.AddFixed(&testWidget{n: 1}); err != nil {
+	if err := reg.addFixed(&testWidget{n: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.Add(&testWidget{n: 2}); !errors.Is(err, ErrFixed) {
@@ -76,24 +76,24 @@ func TestAdd_duplicateType(t *testing.T) {
 func TestAddReplaceable_and_AddFixed(t *testing.T) {
 	reg := New()
 
-	if err := reg.AddReplaceable(&testWidget{n: 1}); err != nil {
+	if err := reg.addReplaceable(&testWidget{n: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.Add(&testWidget{n: 2}); err != nil {
 		t.Fatalf("override replaceable: %v", err)
 	}
-	if err := reg.AddReplaceable(&testWidget{n: 3}); !errors.Is(err, ErrTypeOccupied) {
+	if err := reg.addReplaceable(&testWidget{n: 3}); !errors.Is(err, ErrTypeOccupied) {
 		t.Fatalf("AddReplaceable on regular = %v", err)
 	}
 
 	reg2 := New()
-	if err := reg2.AddFixed(&testWidget{n: 1}); err != nil {
+	if err := reg2.addFixed(&testWidget{n: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := reg2.AddReplaceable(&testWidget{n: 2}); !errors.Is(err, ErrTypeOccupied) {
+	if err := reg2.addReplaceable(&testWidget{n: 2}); !errors.Is(err, ErrTypeOccupied) {
 		t.Fatalf("AddReplaceable on fixed = %v", err)
 	}
-	if err := reg2.AddFixed(&testWidget{n: 3}); !errors.Is(err, ErrTypeOccupied) {
+	if err := reg2.addFixed(&testWidget{n: 3}); !errors.Is(err, ErrTypeOccupied) {
 		t.Fatalf("AddFixed on fixed = %v", err)
 	}
 }
@@ -102,7 +102,7 @@ func TestMerge(t *testing.T) {
 	dst := New()
 	src := New()
 
-	if err := dst.AddReplaceable(&testWidget{n: 1}); err != nil {
+	if err := dst.addReplaceable(&testWidget{n: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := src.Add(&testWidget{n: 2}); err != nil {
@@ -113,7 +113,7 @@ func TestMerge(t *testing.T) {
 	}
 
 	entries := dst.GetByType(reflect.TypeFor[*testWidget]())
-	if len(entries) != 1 || !entries[0].Regular() || entries[0].Value.(*testWidget).n != 2 {
+	if len(entries) != 1 || !entries[0].Regular() || entries[0].Value().(*testWidget).n != 2 {
 		t.Fatalf("after merge: %+v", entries)
 	}
 }
@@ -154,7 +154,7 @@ func TestMerge_nilAndSame(t *testing.T) {
 func TestAdd_preservesOrderOnReplace(t *testing.T) {
 	reg := New()
 	other := "other"
-	if err := reg.AddReplaceable(&testWidget{n: 0}); err != nil {
+	if err := reg.addReplaceable(&testWidget{n: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.reg.Add(other); err != nil {
@@ -166,7 +166,7 @@ func TestAdd_preservesOrderOnReplace(t *testing.T) {
 
 	var order []any
 	reg.WalkEntries(func(e res.Entry) bool {
-		order = append(order, e.Value)
+		order = append(order, e.Value())
 		return true
 	})
 	if len(order) != 2 {

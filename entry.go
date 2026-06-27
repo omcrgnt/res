@@ -2,11 +2,17 @@ package res
 
 import "reflect"
 
-// Entry wraps one resource in a [Registry].
-type Entry struct {
-	// Type is the concrete type of Value.
-	Type reflect.Type
-	// Value is the stored resource.
-	Value any
-	tags  tagSet
+// Entry is a handle to one resource slot in a [Registry].
+type Entry interface {
+	Type() reflect.Type
+	Value() any
+
+	Has(tag Tag) bool
+	Regular() bool
+	Replaceable() bool
+	Fixed() bool
+	Tags() []Tag
+
+	GetCustomTag(key string) (any, bool)
+	ChangeValue(new any) error
 }
